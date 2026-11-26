@@ -13,6 +13,7 @@
 - `call_api` 의 `itemsOnly` / `maxItems` 옵션으로 응답을 항목 위주로 간추림
 - `search_datasets` 가 분류·제공기관·요약·활용신청 수·전체 건수를 구조화해 반환
 - `my_applications` 가 [승인]/[신청]/[반려] 별로 집계
+- `DATAGO_DEBUG=1` 요청 로그 (서비스 키 마스킹)
 - `--version`, `--help`
 - Claude Code 스킬(`skills/datagokr`), `.mcp.json` 예시, CONTRIBUTING / SECURITY / 이슈·PR 템플릿
 
@@ -23,6 +24,8 @@
 - CI: Node 20/22 × Ubuntu/Windows 매트릭스
 
 ### 수정
+- XML 숫자 문자 참조(`&#xAC00;`) 미디코딩, 이중 디코딩 가능성
+- `INFO-000`/`NORMAL_SERVICE` 등 기관별 정상 코드를 실패로 오판하던 문제
 - 설정 파일이 손상되면 저장된 키가 빈 상태로 덮어써지던 문제 — 이제 `.corrupt-<시각>.bak` 으로 백업 후 진행
 - 설정 파일을 원자적으로 저장하고 POSIX 에서 `0600` 권한으로 생성
 - 공백이 섞였거나 너무 짧은 키는 저장 시 거부

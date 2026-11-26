@@ -163,6 +163,7 @@ Claude 가 따르는 흐름 (각 도구 설명에 "다음에 뭘 할지"가 들�
 | `DATAGO_USAGE` | `~/.datago-usage.json` | 호출량 집계 (키 값은 저장하지 않고 이름만) |
 | `DATAGO_HOME` | `~/.datagokr-mcp` | 로그인 세션(쿠키) 폴더 |
 | `DATAGO_STATE` | `$DATAGO_HOME/storage-state.json` | 세션 파일 경로 직접 지정 |
+| `DATAGO_DEBUG` | (꺼짐) | `1` 이면 요청 URL·응답 상태·소요 시간을 stderr 로 출력 (서비스 키는 `***` 로 가림) |
 
 ## 보안
 
