@@ -48,3 +48,22 @@ test('실제형: 공공데이터 표준 응답', () => {
   assert.equal(r.response.body.items.item.length, 2);
   assert.equal(r.response.body.items.item[1].title, '나');
 });
+
+test('숫자 문자 참조(10진/16진)를 한글 포함해 디코딩', () => {
+  assert.deepEqual(parseXml('<r><a>&#65;&#x42;&#xAC00;&#44032;</a></r>'), { r: { a: 'AB가가' } });
+});
+
+test('이중 디코딩 방지: &amp;lt; 는 &lt; 로', () => {
+  assert.equal(parseXml('<r><a>&amp;lt;b&amp;gt;</a></r>').r.a, '&lt;b&gt;');
+  assert.equal(parseXml('<r><a>&lt;b&gt; &amp; &quot;x&quot; &apos;y&apos;</a></r>').r.a, '<b> & "x" \'y\'');
+});
+
+test('잘못된 숫자 참조는 원문 유지', () => {
+  assert.equal(parseXml('<r><a>&#x110000;</a></r>').r.a, '&#x110000;');
+});
+
+test('네임스페이스 접두사·속성 보존, BOM/DOCTYPE 무시', () => {
+  const x = parseXml('﻿<!DOCTYPE a><soap:Env xmlns:soap="u"><soap:Body><v>1</v></soap:Body></soap:Env>');
+  assert.equal(x['soap:Env']['@xmlns:soap'], 'u');
+  assert.equal(x['soap:Env']['soap:Body'].v, '1');
+});

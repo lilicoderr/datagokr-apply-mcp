@@ -72,9 +72,14 @@ export function parseXml(xml) {
     return { tag, attrs, children, text: text.trim() };
   }
 
+  // 한 번에 치환해야 "&amp;lt;" 가 "<" 로 이중 디코딩되지 않는다. 숫자 참조(&#65; &#xAC00;)도 처리.
+  const NAMED = { lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' };
   function decode(s) {
-    return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'").replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+    return s.replace(/&(#x[0-9a-fA-F]+|#\d+|lt|gt|quot|apos|amp);/g, (m, ent) => {
+      if (ent[0] !== '#') return NAMED[ent];
+      const cp = ent[1] === 'x' || ent[1] === 'X' ? parseInt(ent.slice(2), 16) : parseInt(ent.slice(1), 10);
+      try { return String.fromCodePoint(cp); } catch { return m; } // 범위 밖 코드포인트는 원문 유지
+    });
   }
 
   function toValue(node) {
