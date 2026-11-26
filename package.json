@@ -16,15 +16,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/GigongDohyun/datagokr-mcp.git"
+    "url": "git+https://github.com/lilicoderr/datagokr-apply-mcp.git"
   },
-  "keywords": [],
-  "author": "GigongDohyun",
+  "keywords": ["mcp","model-context-protocol","data.go.kr","open-data","korea","claude","playwright"],
+  "author": "lilicoderr",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/GigongDohyun/datagokr-mcp/issues"
+    "url": "https://github.com/lilicoderr/datagokr-apply-mcp/issues"
   },
-  "homepage": "https://github.com/GigongDohyun/datagokr-mcp#readme",
+  "homepage": "https://github.com/lilicoderr/datagokr-apply-mcp#readme",
   "optionalDependencies": {
     "playwright-core": "^1.65.1"
   }
