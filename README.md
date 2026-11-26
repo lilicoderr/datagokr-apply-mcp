@@ -1,4 +1,4 @@
-# data-go-mcp
+# datagokr-mcp
 
 공공데이터포털([data.go.kr](https://www.data.go.kr)) 오픈API를 다루는 **MCP 서버**.
 Claude 같은 MCP 클라이언트가 오픈API를 검색·호출하고, 서비스 키를 관리할 수 있게 해줍니다.
