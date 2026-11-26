@@ -109,6 +109,10 @@ export function registerApplyTools(server) {
     for (const x of r.results) {
       lines.push(`  ${x.ok ? '✅' : x.already ? '↺' : '⚠️'} ${x.idOrUrl}${x.error ? ` (${x.error})` : ''}`);
     }
+    if (r.needLogin) lines.push(`❌ 로그인 세션이 없어 중단했어요(남은 ${r.skipped}건 미시도). apply_login 후 다시 시도하세요.`);
+    if (r.invalid.length) lines.push(`⚠️ 인식 못 한 입력 ${r.invalid.length}건(무시): ${r.invalid.join(', ')}`);
+    if (r.duplicates.length) lines.push(`↺ 중복 ${r.duplicates.length}건 제외: ${r.duplicates.join(', ')}`);
+    if (r.truncated) lines.push(`※ 한 번에 최대 50건까지만 처리해요. ${r.truncated}건은 다시 요청하세요.`);
     if (r.done) lines.push('발급 키는 my_applications 에서 확인 → save_key 로 저장하면 call_api 로 사용.');
     return text(lines.join('\n'));
   });

@@ -16,6 +16,7 @@ import fs from 'node:fs';
 const HOME_DIR = process.env.DATAGO_HOME || path.join(os.homedir(), '.datagokr-mcp');
 const STATE_FILE = process.env.DATAGO_STATE || path.join(HOME_DIR, 'storage-state.json');
 const BASE = 'https://www.data.go.kr';
+export const DEFAULT_PURPOSE = '개인 학습 및 서비스 개발용';
 const MYPAGE = `${BASE}/iim/main/mypageMain.do`;
 // 헤드리스 티를 줄이기 위한 일반 Chrome UA (HeadlessChrome 노출 방지).
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -141,16 +142,19 @@ export function extractDataPk(idOrUrl) {
 
 // 개인회원 기준 개발계정 활용신청 자동 제출. (자동승인 API 는 바로 발급)
 // 검증된 플로우: 신청 폼으로 바로 이동 → 활용목적 입력 → 이용허락 동의 → 제출 → 완료 다이얼로그 확인.
-export async function applyForApi({ idOrUrl, purpose = '개인 학습 및 서비스 개발용', headless = true } = {}) {
+export async function applyForApi({ idOrUrl, purpose = DEFAULT_PURPOSE, headless = true } = {}) {
   const pk = extractDataPk(idOrUrl);
   if (!pk) throw new Error('데이터 id(숫자) 또는 data.go.kr URL 을 넣어주세요.');
+  return withContext({ headless }, (ctx) => applyInContext(ctx, { pk, purpose }));
+}
 
-  return withContext({ headless }, async (ctx) => {
-    const steps = [];
-    const dialogs = [];
-    const page = await ctx.newPage();
-    page.on('dialog', async (d) => { dialogs.push(d.message()); await d.accept().catch(() => {}); });
-
+// 이미 열린 브라우저 컨텍스트에서 신청 1건 수행 (일괄 신청에서 브라우저를 재사용하기 위해 분리)
+async function applyInContext(ctx, { pk, purpose = DEFAULT_PURPOSE }) {
+  const steps = [];
+  const dialogs = [];
+  const page = await ctx.newPage();
+  page.on('dialog', async (d) => { dialogs.push(d.message()); await d.accept().catch(() => {}); });
+  try {
     // 개발계정 신청 폼으로 바로 이동 (활용신청 버튼의 window.open 대상과 동일)
     const formUrl = `${BASE}/tcs/dss/redirectDevAcountRequestForm.do?publicDataPk=${pk}&isBusinessApply=undefined`;
     await page.goto(formUrl, { waitUntil: 'networkidle', timeout: 40000 }).catch(() => {});
@@ -179,8 +183,7 @@ export async function applyForApi({ idOrUrl, purpose = '개인 학습 및 서비
     steps.push('제출');
 
     const msg = dialogs.join(' | ');
-    const done = /신청이?\s*완료|완료되었|정상적으로\s*신청/.test(msg);
-    const already = /이미.*신청|신청.*내역이\s*있/.test(msg);
+    const { done, already } = classifyApplyDialog(msg);
     return {
       ok: done,
       already,
@@ -191,7 +194,33 @@ export async function applyForApi({ idOrUrl, purpose = '개인 학습 및 서비
       steps,
       landedUrl: page.url(),
     };
-  });
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
+// 신청 후 뜬 알림창 문구로 결과 판정 (순수 함수 — 문구가 바뀌면 여기와 테스트만 고치면 됨)
+export function classifyApplyDialog(msg) {
+  const s = String(msg || '');
+  return {
+    done: /신청이?\s*완료|완료되었|정상적으로\s*신청/.test(s),
+    already: /이미.*신청|신청.*내역이\s*있/.test(s),
+  };
+}
+
+// 입력 목록 정리: id/URL → 숫자 id, 중복 제거, 잘못된 입력은 따로 모은다.
+export function normalizeIds(list, { max = 50 } = {}) {
+  const raw = (Array.isArray(list) ? list : [list]).map((x) => String(x ?? '').trim()).filter(Boolean);
+  const ids = [];
+  const invalid = [];
+  const duplicates = [];
+  for (const item of raw) {
+    const pk = extractDataPk(item);
+    if (!pk) invalid.push(item);
+    else if (ids.includes(pk)) duplicates.push(pk);
+    else ids.push(pk);
+  }
+  return { ids: ids.slice(0, max), invalid, duplicates, truncated: Math.max(0, ids.length - max) };
 }
 
 // 키워드로 "활용신청 가능한(개인 자동승인 REST)" 오픈API 를 찾는다. [{id, name}]
@@ -222,23 +251,29 @@ export async function findApplyTargets({ keyword, limit = 10, headless = true } 
   });
 }
 
-// 여러 오픈API 에 순차 활용신청. 결과 요약 반환.
-export async function applyForApis(idList, { purpose, delayMs = 1200, headless = true } = {}) {
-  const ids = (Array.isArray(idList) ? idList : [idList]).map((x) => String(x).trim()).filter(Boolean);
+// 여러 오픈API 에 순차 활용신청. 브라우저 1개를 재사용하고, 로그인이 없으면 즉시 중단한다.
+export async function applyForApis(idList, { purpose = DEFAULT_PURPOSE, delayMs = 1200, headless = true, max = 50 } = {}) {
+  const { ids, invalid, duplicates, truncated } = normalizeIds(idList, { max });
   const results = [];
-  let done = 0; let already = 0; let failed = 0;
-  for (const idOrUrl of ids) {
-    try {
-      const r = await applyForApi({ idOrUrl, purpose, headless });
-      results.push({ idOrUrl, ok: r.ok, already: r.already, message: r.message });
-      if (r.ok) done += 1; else if (r.already) already += 1; else failed += 1;
-    } catch (e) {
-      results.push({ idOrUrl, ok: false, error: e.message });
-      failed += 1;
-    }
-    if (delayMs) await new Promise((res) => setTimeout(res, delayMs));
+  let done = 0; let already = 0; let failed = 0; let needLogin = false;
+  if (ids.length) {
+    await withContext({ headless }, async (ctx) => {
+      for (const pk of ids) {
+        try {
+          const r = await applyInContext(ctx, { pk, purpose });
+          results.push({ idOrUrl: pk, ok: r.ok, already: r.already, message: r.message });
+          if (r.needLogin) { needLogin = true; failed += 1; break; } // 나머지도 전부 실패할 테니 중단
+          if (r.ok) done += 1; else if (r.already) already += 1; else failed += 1;
+        } catch (e) {
+          results.push({ idOrUrl: pk, ok: false, error: e.message });
+          failed += 1;
+        }
+        if (delayMs) await new Promise((res) => setTimeout(res, delayMs));
+      }
+    });
   }
-  return { total: ids.length, done, already, failed, results };
+  const skipped = needLogin ? ids.length - results.length : 0;
+  return { total: ids.length, done, already, failed, needLogin, skipped, invalid, duplicates, truncated, results };
 }
 
 export async function listMyApplications({ headless = true } = {}) {

@@ -27,3 +27,32 @@ test('extractDataPk: id/URL/publicDataPk 추출', async () => {
   assert.equal(extractDataPk('/tcs/dss/redirectDevAcountRequestForm.do?publicDataPk=15057552&x=1'), '15057552');
   assert.equal(extractDataPk('none'), null);
 });
+
+import { classifyApplyDialog, normalizeIds, DEFAULT_PURPOSE } from '../src/apply.js';
+
+test('classifyApplyDialog: 완료/이미 신청 문구 판정', () => {
+  assert.deepEqual(classifyApplyDialog('활용신청이 완료되었습니다.'), { done: true, already: false });
+  assert.deepEqual(classifyApplyDialog('정상적으로 신청되었습니다'), { done: true, already: false });
+  assert.deepEqual(classifyApplyDialog('이미 활용신청한 내역이 있습니다.'), { done: false, already: true });
+  assert.deepEqual(classifyApplyDialog('알 수 없는 문구'), { done: false, already: false });
+  assert.deepEqual(classifyApplyDialog(undefined), { done: false, already: false });
+});
+
+test('normalizeIds: URL→id, 중복/잘못된 입력 분리', () => {
+  const r = normalizeIds(['15000314', 'https://www.data.go.kr/data/15057552/openapi.do', '15000314', 'abc', '', '  15012345  ']);
+  assert.deepEqual(r.ids, ['15000314', '15057552', '15012345']);
+  assert.deepEqual(r.duplicates, ['15000314']);
+  assert.deepEqual(r.invalid, ['abc']);
+});
+
+test('normalizeIds: 단일 값, 최대 개수 제한', () => {
+  assert.deepEqual(normalizeIds('15000314').ids, ['15000314']);
+  const many = Array.from({ length: 60 }, (_, i) => String(15000000 + i));
+  const r = normalizeIds(many, { max: 50 });
+  assert.equal(r.ids.length, 50);
+  assert.equal(r.truncated, 10);
+});
+
+test('기본 활용목적 문구 유지', () => {
+  assert.match(DEFAULT_PURPOSE, /학습/);
+});
