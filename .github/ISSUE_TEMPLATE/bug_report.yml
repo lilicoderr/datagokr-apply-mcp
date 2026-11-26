@@ -1,0 +1,36 @@
+name: 버그 신고
+description: 도구가 기대와 다르게 동작해요
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **서비스 키, 쿠키, 세션 파일, 비밀번호는 절대 붙이지 마세요.** 키는 `abcd…wxyz` 처럼 가려 주세요.
+  - type: textarea
+    id: what
+    attributes:
+      label: 무슨 일이 일어났나요?
+      description: 호출한 도구와 인자(키 제외), 기대한 결과, 실제 결과
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: doctor 출력
+      description: "`node bin/server.js doctor` 결과를 붙여주세요."
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: 버전 / OS / Node
+      placeholder: "1.1.0 / Windows 11 / Node 22"
+  - type: dropdown
+    id: area
+    attributes:
+      label: 영역
+      options:
+        - 호출 (call_api / fetch_all)
+        - 검색 · 명세 (search_datasets / describe_api)
+        - 활용신청 자동화 (apply_*)
+        - 키 · 설정 관리
+        - 기타

@@ -1,0 +1,23 @@
+name: 기능 제안
+description: 이런 도구/옵션이 있으면 좋겠어요
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 어떤 상황에서 불편한가요?
+      description: "Claude 에게 어떤 요청을 했는데 어디서 막혔는지 적어주세요."
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 원하는 동작
+      description: 도구 이름/인자/출력 아이디어가 있다면 적어주세요.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 확인
+      options:
+        - label: 런타임 의존성을 늘리지 않고도 가능해 보여요 (또는 선택 의존성)
+        - label: 비밀번호/쿠키를 저장하는 방식은 아니에요
