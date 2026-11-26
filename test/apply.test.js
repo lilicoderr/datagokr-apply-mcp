@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toOpenApiUrl, isAvailable, profileDir } from '../src/apply.js';
+import { toOpenApiUrl, isAvailable, stateFile } from '../src/apply.js';
 
 test('toOpenApiUrl: 숫자 id / URL / data 경로', () => {
   assert.equal(toOpenApiUrl('15012345'), 'https://www.data.go.kr/data/15012345/openapi.do');
@@ -17,5 +17,5 @@ test('isAvailable / profileDir', () => {
   // playwright-core 설치 여부와 무관하게 호출은 안전해야 함
   assert.equal(typeof isAvailable(), 'boolean');
   // 세션 폴더는 저장소 밖(홈 하위)에 위치
-  assert.match(profileDir(), /datagokr-mcp/);
+  assert.match(stateFile(), /datagokr-mcp/);
 });

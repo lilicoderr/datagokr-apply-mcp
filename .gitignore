@@ -10,3 +10,4 @@ config.json
 .datagokr-mcp/
 cookies*.json
 credentials*.json
+_*.mjs

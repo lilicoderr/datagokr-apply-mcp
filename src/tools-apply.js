@@ -23,7 +23,7 @@ export function registerApplyTools(server) {
     inputSchema: { type: 'object', properties: { timeoutSec: { type: 'number', description: '로그인 대기 시간(초, 기본 180)' } } },
   }, async (a) => {
     const r = await apply.interactiveLogin({ timeoutMs: (a.timeoutSec || 180) * 1000 });
-    return text(`${r.ok ? '✅' : '⚠️'} ${r.message}\n세션 폴더: ${apply.profileDir()} (저장소 밖, 커밋되지 않음)`);
+    return text(`${r.ok ? '✅' : '⚠️'} ${r.message}\n세션 파일: ${apply.stateFile()} (저장소 밖, 커밋되지 않음)`);
   });
 
   server.tool('apply_status', {

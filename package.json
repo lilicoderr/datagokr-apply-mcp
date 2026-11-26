@@ -26,6 +26,6 @@
   },
   "homepage": "https://github.com/GigongDohyun/datagokr-mcp#readme",
   "optionalDependencies": {
-    "playwright-core": "^1.49.1"
+    "playwright-core": "^1.65.1"
   }
 }
