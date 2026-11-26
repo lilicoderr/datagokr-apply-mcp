@@ -154,3 +154,17 @@ test('callApi: retries=0 이면 재시도 안 함', async () => {
   assert.equal(n, 1);
   assert.equal(r.ok, false);
 });
+
+import { isSuccessCode } from '../src/datago.js';
+
+test('isSuccessCode: 기관별 정상 코드 표기', () => {
+  for (const c of ['00', '0', '0000', 'INFO-000', 'NORMAL_SERVICE', 'NORMAL SERVICE.', 'OK']) assert.equal(isSuccessCode(c), true, c);
+  for (const c of ['03', '30', 'ERROR-300', '', null, 'INFO-200']) assert.equal(isSuccessCode(c), false, String(c));
+});
+
+test('callApi: INFO-000 응답도 ok 로 판정', async () => {
+  const fetchImpl = async () => ({ ok: true, status: 200, headers: { get: () => 'application/json' },
+    text: async () => JSON.stringify({ RESULT: { CODE: 'INFO-000', MESSAGE: '정상 처리되었습니다' } }) });
+  const r = await callApi({ url: 'http://x', serviceKey: 'k', fetchImpl });
+  assert.equal(r.ok, true);
+});

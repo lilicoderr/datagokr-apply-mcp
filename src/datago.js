@@ -56,6 +56,12 @@ export function hintFor(code) {
   return RESULT_HINTS[c] || null;
 }
 
+// 정상 응답 코드: 00/0000(표준), INFO-000(서울 열린데이터 계열), NORMAL_SERVICE/OK(일부 기관)
+export function isSuccessCode(code) {
+  const s = String(code ?? '').trim();
+  return /^0+$/.test(s) || /^INFO-000$/i.test(s) || /^(NORMAL[_ ]SERVICE|OK)\.?$/i.test(s);
+}
+
 // 일시 장애라 재시도할 가치가 있는 resultCode (01 앱 에러, 02 DB 에러, 05 타임아웃)
 const RETRYABLE_CODES = new Set(['01', '02', '05']);
 
@@ -158,7 +164,7 @@ export async function callApi({
     const { kind, data, resultCode, resultMsg } = interpret(text, contentType);
     return {
       httpStatus: res.status,
-      ok: res.ok && (resultCode == null || /^0+$/.test(String(resultCode))),
+      ok: res.ok && (resultCode == null || isSuccessCode(resultCode)),
       resultCode,
       resultMsg,
       codeMeaning: describeResultCode(resultCode),
