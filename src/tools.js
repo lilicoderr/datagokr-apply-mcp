@@ -5,6 +5,7 @@
 
 import { callApi, describeResultCode, isEncodedKey, RESULT_CODES } from './datago.js';
 import { extractItems, hasMore } from './items.js';
+import { fetchApiSpec, buildExampleParams } from './portal.js';
 
 const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
 
@@ -130,6 +131,33 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep } = {}
       가져온항목수: all.length,
       잘림: all.length > max || (totalCount != null && all.length < totalCount),
       항목: all.slice(0, max),
+    });
+  });
+
+  // ── describe_api : 호출 전에 정확한 명세 확인 (공개 페이지, 로그인 불필요) ──
+  server.tool('describe_api', {
+    description: '데이터 id(또는 상세 URL)로 오픈API 의 명세를 가져온다: 요청주소, 필수/선택 요청변수(샘플값), 응답 항목, '
+      + '상세기능 목록, 일일 트래픽. call_api 를 부르기 전에 이걸로 정확한 url 과 필수 params 를 확인하라 '
+      + '(추측으로 호출하다 resultCode 10/11/12 를 겪지 않도록). 로그인 불필요.',
+    inputSchema: { type: 'object', required: ['idOrUrl'], properties: {
+      idOrUrl: { type: 'string', description: '데이터 id (예 "15012690") 또는 data.go.kr/data/<id>/... URL' },
+    } },
+  }, async (a) => {
+    const spec = await fetchApiSpec(a.idOrUrl, { fetchImpl });
+    if (!spec.found) {
+      return text(`명세를 읽지 못했어요(LINK형/파일데이터이거나 포털 구조가 바뀌었을 수 있어요). 직접 확인: ${spec.pageUrl}`);
+    }
+    const example = spec.endpoint
+      ? { url: spec.endpoint, params: buildExampleParams(spec.request) } : null;
+    return pretty({
+      제목: spec.title, 제공기관: spec.provider, 데이터포맷: spec.format, 트래픽: spec.traffic,
+      요청주소: spec.endpoint, 서비스URL: spec.serviceUrl,
+      상세기능: spec.operations.map((o) => o.name),
+      ...(spec.operations.length > 1 ? { 참고: '요청주소는 첫 상세기능 기준이에요. 다른 기능은 서비스URL 뒤에 오퍼레이션명을 붙이며, 포털 페이지에서 확인하세요.' } : {}),
+      요청변수: spec.request.map((r) => `${r.required ? '[필수]' : '[선택]'} ${r.name}(${r.ko}) 예:${r.sample || '-'} — ${r.desc}`),
+      응답항목: spec.response.map((r) => `${r.name}(${r.ko})`),
+      call_api_예시: example,
+      상세페이지: spec.pageUrl,
     });
   });
 
