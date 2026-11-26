@@ -105,6 +105,7 @@ claude mcp add datagokr -- node /절대경로/datagokr-apply-mcp/bin/server.js
 | 도구 | 설명 |
 |---|---|
 | `search_datasets` | 키워드로 오픈API 검색 (제목·분류·기관·요약·활용신청 수) |
+| `find_apply_targets` | 키워드로 **개발단계 자동승인 REST** API 만 골라 id 목록 (브라우저 없이 공개 페이지 기반) |
 | `describe_api` | 데이터 id → **요청주소 · 필수/선택 파라미터 · 응답 항목 · 트래픽** |
 | `call_api` | 오픈API 호출. 키 자동 부착, 이중 인코딩 보정, JSON/XML 해석, 재시도, `itemsOnly` |
 | `fetch_all` | 페이지네이션 자동 순회 → 항목만 합쳐 반환 (`maxPages` 상한) |
@@ -124,7 +125,6 @@ claude mcp add datagokr -- node /절대경로/datagokr-apply-mcp/bin/server.js
 |---|---|
 | `apply_login` | 로그인 창 열기 (논블로킹, 비밀번호 미저장) |
 | `apply_status` | 로그인 세션 유효 여부 확인 |
-| `find_apply_targets` | 키워드로 **신청 가능한** REST API 찾기 |
 | `apply_api` | API 1건 활용신청 제출 |
 | `apply_apis` | 여러 건 **일괄 신청** (브라우저 1개 재사용, 중복 제거, 로그인 없으면 즉시 중단) |
 | `my_applications` | 신청/승인/반려 현황 (상태별 집계) |
