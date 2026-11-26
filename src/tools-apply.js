@@ -72,26 +72,6 @@ export function registerApplyTools(server) {
     return text(lines.join('\n'));
   });
 
-  server.tool('find_apply_targets', {
-    description: '[활용신청 도우미] 키워드로 "활용신청 가능한(개인 자동승인 REST)" 오픈API 를 찾아 id 목록을 준다. '
-      + '"날씨 API 10개 신청해줘" 같은 요청에서 먼저 이걸로 대상을 찾고 apply_apis 로 넘기면 된다. 로그인 세션 필요.',
-    inputSchema: {
-      type: 'object',
-      required: ['keyword'],
-      properties: {
-        keyword: { type: 'string', description: '검색어 (예: "날씨", "버스도착", "미세먼지")' },
-        limit: { type: 'number', description: '최대 개수 (기본 10)' },
-      },
-    },
-  }, async (a) => {
-    const r = await apply.findApplyTargets({ keyword: a.keyword, limit: a.limit || 10 });
-    if (!r.targets.length) return text(`'${a.keyword}' 로 신청 가능한 REST API 를 찾지 못했어요. 다른 키워드로 시도하세요.`);
-    const lines = [`'${r.keyword}' 신청 가능 API ${r.count}개:`];
-    for (const t of r.targets) lines.push(`  ${t.id}  ${t.name}`);
-    lines.push(`→ apply_apis({ ids: [${r.targets.map((t) => `"${t.id}"`).join(', ')}] }) 로 한 번에 신청.`);
-    return text(lines.join('\n'));
-  });
-
   server.tool('apply_apis', {
     description: '[활용신청 일괄] 여러 오픈API 에 한 번에 활용신청한다. ids 에 데이터 id/URL 배열을 준다. '
       + '많은 API 를 신청할 때 apply_api 를 반복하는 대신 이걸 쓰면 편하다. 로그인 세션 필요.',

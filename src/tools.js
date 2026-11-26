@@ -5,7 +5,7 @@
 
 import { callApi, describeResultCode, isEncodedKey, RESULT_CODES } from './datago.js';
 import { extractItems, hasMore } from './items.js';
-import { fetchApiSpec, buildExampleParams, searchDatasets } from './portal.js';
+import { fetchApiSpec, buildExampleParams, searchDatasets, findApplyTargets } from './portal.js';
 
 const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
 
@@ -138,6 +138,26 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep } = {}
       가져온항목수: all.length,
       잘림: all.length > max || (totalCount != null && all.length < totalCount),
       항목: all.slice(0, max),
+    });
+  });
+
+  // ── find_apply_targets : 신청 가능한(개인 자동승인 REST) API 고르기 — 공개 페이지만 사용 ──
+  server.tool('find_apply_targets', {
+    description: '키워드로 "개발단계 자동승인 REST" 오픈API 만 골라 id 목록을 준다(브라우저·로그인 불필요, 공개 페이지 기반). '
+      + '"날씨 API 5개 신청해줘" 같은 요청에서 먼저 이걸로 대상을 찾고, 결과 ids 를 apply_apis 에 넘긴다.',
+    inputSchema: { type: 'object', required: ['keyword'], properties: {
+      keyword: { type: 'string', description: '검색어 (예: "날씨", "버스 도착", "미세먼지")' },
+      limit: { type: 'number', description: '최대 개수 (기본 10, 상한 30)' },
+    } },
+  }, async (a) => {
+    const r = await findApplyTargets(a.keyword, { limit: Math.min(a.limit || 10, 30), fetchImpl });
+    if (!r.targets.length) {
+      return text(`'${a.keyword}' 로 검색된 ${r.scanned}건 중 개발단계 자동승인 REST API 가 없어요. 다른 키워드로 시도하세요.`);
+    }
+    return pretty({
+      keyword: r.keyword, 검토한건수: r.scanned, count: r.count,
+      targets: r.targets.map((t) => ({ id: t.id, 이름: t.name, 기관: t.provider, 활용신청: t.applications, 트래픽: t.traffic })),
+      다음: `apply_apis { ids: [${r.targets.map((t) => `"${t.id}"`).join(', ')}] } 로 한 번에 신청 (로그인 필요: apply_status)`,
     });
   });
 
