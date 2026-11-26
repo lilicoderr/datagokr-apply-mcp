@@ -36,6 +36,42 @@ export function describeResultCode(code) {
   return RESULT_CODES[c] || RESULT_CODES[String(Number(code))] || `알 수 없는 코드(${code})`;
 }
 
+// 코드별 "그래서 뭘 하면 되는지" 안내. AI/사용자가 바로 다음 행동을 알 수 있게 한다.
+export const RESULT_HINTS = {
+  '03': '조건에 맞는 데이터가 없어요. 날짜·지역코드 등 파라미터 범위를 넓혀 보세요.',
+  '10': '파라미터 형식이 틀렸어요. 해당 API 의 요청 변수 표(타입/자리수)를 확인하세요.',
+  '11': '필수 파라미터가 빠졌어요. 오픈API 상세 페이지의 "필수" 항목을 모두 넣었는지 보세요.',
+  '12': 'URL 이 틀렸거나 폐기된 API 예요. 포털 상세 페이지의 최신 요청 주소를 확인하세요.',
+  '20': '활용신청이 승인되지 않았어요. my_applications 로 승인 상태를 확인하고, 자동승인 API 라도 1~2시간 걸릴 수 있어요.',
+  '21': '키가 일시적으로 사용 불가예요. 잠시 후 다시 시도하세요.',
+  '22': '일일 트래픽 한도를 넘겼어요. 내일 다시 하거나 포털에서 트래픽 증설을 신청하세요. (quota_status 로 오늘 호출량 확인)',
+  '30': '등록되지 않은 키예요. 키 오타, 승인 대기(활용신청 직후 1~2시간), 다른 API 의 키 사용 여부를 확인하세요. (doctor 로 점검)',
+  '31': '활용 기간이 만료됐어요. 포털에서 연장 신청을 하세요.',
+  '32': '호출 IP 가 등록된 IP 가 아니에요. 포털 개발계정 설정에서 IP 를 확인하세요.',
+};
+
+export function hintFor(code) {
+  if (code == null) return null;
+  const c = String(code).padStart(2, '0');
+  return RESULT_HINTS[c] || null;
+}
+
+// 일시 장애라 재시도할 가치가 있는 resultCode (01 앱 에러, 02 DB 에러, 05 타임아웃)
+const RETRYABLE_CODES = new Set(['01', '02', '05']);
+
+export function isRetryable({ httpStatus, resultCode, error } = {}) {
+  if (error) return true; // 네트워크 오류/타임아웃
+  if (httpStatus === 429 || (httpStatus >= 500 && httpStatus <= 599)) return true;
+  if (resultCode != null && RETRYABLE_CODES.has(String(resultCode).padStart(2, '0'))) return true;
+  return false;
+}
+
+// 지수 백오프: base * 2^attempt (+0~20% 지터), 최대 8초
+export function backoffMs(attempt, base = 500, rand = Math.random) {
+  const raw = base * 2 ** attempt;
+  return Math.min(8000, Math.round(raw * (1 + rand() * 0.2)));
+}
+
 // 키가 이미 URL 인코딩된(Encoding) 키인지 추정
 export function isEncodedKey(key) {
   return /%[0-9A-Fa-f]{2}/.test(String(key));
@@ -82,15 +118,30 @@ export function interpret(bodyText, contentType = '') {
 }
 
 const DEFAULT_FETCH = (...a) => globalThis.fetch(...a);
+const DEFAULT_SLEEP = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 네트워크 오류를 사람이 읽을 메시지로
+export function describeNetworkError(e, timeoutMs) {
+  if (e?.name === 'AbortError') return `응답 시간 초과(${timeoutMs}ms). 포털 서버가 느리거나 일시 장애일 수 있어요.`;
+  const code = e?.cause?.code || e?.code;
+  if (code === 'ENOTFOUND') return 'DNS 조회 실패 — URL 의 도메인이 맞는지, 인터넷 연결이 되는지 확인하세요.';
+  if (code === 'ECONNREFUSED') return '연결 거부 — 서버가 꺼져 있거나 포트가 틀렸어요.';
+  if (code === 'ECONNRESET') return '연결이 끊겼어요(ECONNRESET). 잠시 후 다시 시도하세요.';
+  if (/Invalid URL/i.test(e?.message || '')) return `URL 형식이 올바르지 않아요: ${e.message}`;
+  return `네트워크 오류: ${e?.cause?.message || e?.message || e}`;
+}
 
 /**
- * 오픈API 호출. 서비스키 이중 인코딩이면 반대 형태로 1회 자동 재시도.
- * @returns {{ok, httpStatus, resultCode, resultMsg, codeMeaning, kind, data, url, usedEncodedKey, retried}}
+ * 오픈API 호출. 서비스키 이중 인코딩이면 반대 형태로 1회 자동 재시도하고,
+ * 일시 장애(네트워크/5xx/429/resultCode 01·02·05)는 지수 백오프로 재시도한다.
+ * @returns {{ok, httpStatus, resultCode, resultMsg, codeMeaning, hint, kind, data, url, usedEncodedKey, retried, attempts}}
  */
 export async function callApi({
   url, params = {}, serviceKey, method = 'GET', body, timeoutMs = 15000, fetchImpl = DEFAULT_FETCH,
+  retries = 2, retryDelayMs = 500, sleep = DEFAULT_SLEEP,
 }) {
   if (!url) throw new Error('url 이 필요합니다.');
+  let attempts = 0;
 
   async function once(encodeKey) {
     const fullUrl = buildUrl(url, params, serviceKey, { encodeKey });
@@ -111,6 +162,7 @@ export async function callApi({
       resultCode,
       resultMsg,
       codeMeaning: describeResultCode(resultCode),
+      hint: hintFor(resultCode),
       kind,
       data,
       url: fullUrl,
@@ -118,15 +170,36 @@ export async function callApi({
     };
   }
 
+  // 일시 장애 재시도 래퍼. 마지막 시도의 결과(또는 오류)를 돌려준다.
+  async function withRetry(encodeKey) {
+    let lastErr;
+    for (let i = 0; i <= retries; i++) {
+      attempts++;
+      try {
+        const r = await once(encodeKey);
+        if (i < retries && isRetryable(r)) { await sleep(backoffMs(i, retryDelayMs)); continue; }
+        return r;
+      } catch (e) {
+        lastErr = e;
+        if (i < retries) await sleep(backoffMs(i, retryDelayMs));
+      }
+    }
+    const err = new Error(describeNetworkError(lastErr, timeoutMs));
+    err.cause = lastErr;
+    err.attempts = attempts;
+    throw err;
+  }
+
   const firstEncode = serviceKey ? !isEncodedKey(String(serviceKey)) : undefined;
-  let result = await once(firstEncode);
+  const result = await withRetry(firstEncode);
 
   // 서비스키 미등록(30) 이면 인코딩 형태를 뒤집어 한 번 더
   if (serviceKey && String(result.resultCode) === '30') {
-    const retry = await once(!firstEncode);
+    const retry = await withRetry(!firstEncode);
     retry.retried = true;
-    if (String(retry.resultCode) !== '30') return retry;
+    if (String(retry.resultCode) !== '30') { retry.attempts = attempts; return retry; }
     result.retried = true;
   }
+  result.attempts = attempts;
   return result;
 }
