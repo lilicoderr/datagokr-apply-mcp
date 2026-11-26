@@ -190,6 +190,34 @@ export async function applyForApi({ idOrUrl, purpose = '개인 학습 및 서비
   });
 }
 
+// 키워드로 "활용신청 가능한(개인 자동승인 REST)" 오픈API 를 찾는다. [{id, name}]
+export async function findApplyTargets({ keyword, limit = 10, headless = true } = {}) {
+  if (!keyword) throw new Error('검색 keyword 가 필요합니다.');
+  return withContext({ headless }, async (ctx) => {
+    const page = await ctx.newPage();
+    const listUrl = `${BASE}/tcs/dss/selectDataSetList.do?dType=API&keyword=${encodeURIComponent(keyword)}`;
+    await page.goto(listUrl, { waitUntil: 'networkidle', timeout: 40000 }).catch(() => {});
+    const ids = await page.$$eval('a[href*="/openapi.do"]', (as) => [...new Set(as
+      .map((a) => (a.getAttribute('href').match(/\/data\/(\d+)\/openapi\.do/) || [])[1])
+      .filter(Boolean))]).catch(() => []);
+
+    const targets = [];
+    for (const id of ids) {
+      if (targets.length >= limit) break;
+      try {
+        await page.goto(`${BASE}/data/${id}/openapi.do`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        const info = await page.evaluate(() => {
+          const hasApply = [...document.querySelectorAll('button')].some((e) => /^활용신청$/.test((e.innerText || '').trim()));
+          const title = (document.querySelector('h1, .tit, .page-tit')?.innerText || document.title || '').trim().slice(0, 60);
+          return hasApply ? { title } : null;
+        });
+        if (info) targets.push({ id, name: info.title });
+      } catch { /* 건너뜀 */ }
+    }
+    return { keyword, count: targets.length, targets };
+  });
+}
+
 // 여러 오픈API 에 순차 활용신청. 결과 요약 반환.
 export async function applyForApis(idList, { purpose, delayMs = 1200, headless = true } = {}) {
   const ids = (Array.isArray(idList) ? idList : [idList]).map((x) => String(x).trim()).filter(Boolean);
