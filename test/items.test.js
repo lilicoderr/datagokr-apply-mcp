@@ -137,3 +137,28 @@ test('call_api: 없는 keyName 이면 안내 메시지', async () => {
   assert.equal(res.result.isError, true);
   assert.match(res.result.content[0].text, /list_keys/);
 });
+
+import { MAX_RAW_CHARS } from '../src/tools.js';
+
+test('call_api: 원본이 너무 크면 잘라서 안내', async () => {
+  const big = { response: { header: { resultCode: '00' }, body: { items: { item: Array.from({ length: 3000 }, (_, i) => ({ i, pad: 'x'.repeat(30) })) } } } };
+  const fetchImpl = async () => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, text: async () => JSON.stringify(big) });
+  const s = createServer();
+  const reg = createRegistry(tmp('c.json'));
+  reg.saveKey('k', 'plainkey0123456789');
+  registerTools(s, { registry: reg, fetchImpl });
+  const res = await callTool(s, 'call_api', { url: 'http://x' });
+  const t = res.result.content[0].text;
+  assert.ok(t.length < MAX_RAW_CHARS + 500);
+  assert.match(t, /itemsOnly/);
+});
+
+test('describe_api saveAs: 요청주소를 별칭으로 저장', async () => {
+  const html = fs.readFileSync(new URL('./fixtures/openapi-detail.html', import.meta.url), 'utf8');
+  const s = createServer();
+  const reg = createRegistry(tmp('c.json'));
+  registerTools(s, { registry: reg, fetchImpl: async () => ({ ok: true, status: 200, text: async () => html }) });
+  const res = await callTool(s, 'describe_api', { idOrUrl: '15012690', saveAs: '특일' });
+  assert.match(JSON.parse(res.result.content[0].text).저장, /특일/);
+  assert.match(reg.getEndpoint('특일').url, /SpcdeInfoService\/getAnniversaryInfo/);
+});

@@ -21,6 +21,7 @@ const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로�
 - 트래픽 제한(개발계정 보통 일 1,000회)을 넘기면 resultCode 22 가 난다.`;
 
 function text(t) { return { content: [{ type: 'text', text: t }] }; }
+export const MAX_RAW_CHARS = 20000;
 function pretty(obj) { return text(typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2)); }
 
 // endpoint 별칭/직접 url + 키를 해석해 호출 준비물을 만든다 (call_api, fetch_all 공용)
@@ -87,7 +88,13 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep } = {}
       const max = args.maxItems || 20;
       return pretty({ 요약, 페이징: page, 항목수: items.length, 항목: items.slice(0, max), 생략됨: Math.max(0, items.length - max) });
     }
-    return pretty({ 요약, 데이터: r.data });
+    // 원본이 너무 크면 AI 컨텍스트를 잡아먹으므로 잘라서 돌려주고 대안을 안내
+    const body = JSON.stringify({ 요약, 데이터: r.data }, null, 2);
+    if (body.length > MAX_RAW_CHARS) {
+      return text(`${body.slice(0, MAX_RAW_CHARS)}\n…(이하 ${body.length - MAX_RAW_CHARS}자 생략)\n`
+        + '※ 응답이 커서 잘랐어요. itemsOnly:true 로 항목만 받거나, 전체가 필요하면 fetch_all 을 쓰세요.');
+    }
+    return text(body);
   });
 
   // ── fetch_all : 페이지 자동 순회 ──
@@ -141,6 +148,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep } = {}
       + '(추측으로 호출하다 resultCode 10/11/12 를 겪지 않도록). 로그인 불필요.',
     inputSchema: { type: 'object', required: ['idOrUrl'], properties: {
       idOrUrl: { type: 'string', description: '데이터 id (예 "15012690") 또는 data.go.kr/data/<id>/... URL' },
+      saveAs: { type: 'string', description: '주면 이 요청주소를 해당 별칭으로 저장한다 (이후 call_api { endpoint: 별칭 } 로 호출)' },
     } },
   }, async (a) => {
     const spec = await fetchApiSpec(a.idOrUrl, { fetchImpl });
@@ -149,7 +157,13 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep } = {}
     }
     const example = spec.endpoint
       ? { url: spec.endpoint, params: buildExampleParams(spec.request) } : null;
+    let saved = null;
+    if (a.saveAs && spec.endpoint) {
+      registry.saveEndpoint(a.saveAs, spec.endpoint, spec.title, {});
+      saved = `별칭 '${a.saveAs}' 로 저장됨 → call_api { endpoint: "${a.saveAs}", params: {…필수 파라미터} }`;
+    }
     return pretty({
+      ...(saved ? { 저장: saved } : {}),
       제목: spec.title, 제공기관: spec.provider, 데이터포맷: spec.format, 트래픽: spec.traffic,
       요청주소: spec.endpoint, 서비스URL: spec.serviceUrl,
       상세기능: spec.operations.map((o) => o.name),
