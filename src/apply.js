@@ -108,56 +108,64 @@ export async function interactiveLogin({ timeoutMs = 300000 } = {}) {
   }
 }
 
-export async function applyForApi({ idOrUrl, purpose = 'AI 개발 및 학습용', headless = true } = {}) {
-  const url = toOpenApiUrl(idOrUrl);
-  if (!url) throw new Error('데이터 id(숫자) 또는 openapi.do URL 을 넣어주세요.');
+export function extractDataPk(idOrUrl) {
+  const v = String(idOrUrl || '').trim();
+  if (/^\d+$/.test(v)) return v;
+  const m = v.match(/\/data\/(\d+)\//) || v.match(/publicDataPk=(\d+)/);
+  return m ? m[1] : null;
+}
+
+// 개인회원 기준 개발계정 활용신청 자동 제출. (자동승인 API 는 바로 발급)
+// 검증된 플로우: 신청 폼으로 바로 이동 → 활용목적 입력 → 이용허락 동의 → 제출 → 완료 다이얼로그 확인.
+export async function applyForApi({ idOrUrl, purpose = '개인 학습 및 서비스 개발용', headless = true } = {}) {
+  const pk = extractDataPk(idOrUrl);
+  if (!pk) throw new Error('데이터 id(숫자) 또는 data.go.kr URL 을 넣어주세요.');
 
   return withContext({ headless }, async (ctx) => {
     const steps = [];
+    const dialogs = [];
     const page = await ctx.newPage();
-    if (!(await isAuthed(page))) {
-      return { ok: false, needLogin: true, message: '로그인 세션이 없습니다. 먼저 apply_login 으로 로그인하세요.', steps };
+    page.on('dialog', async (d) => { dialogs.push(d.message()); await d.accept().catch(() => {}); });
+
+    // 개발계정 신청 폼으로 바로 이동 (활용신청 버튼의 window.open 대상과 동일)
+    const formUrl = `${BASE}/tcs/dss/redirectDevAcountRequestForm.do?publicDataPk=${pk}&isBusinessApply=undefined`;
+    await page.goto(formUrl, { waitUntil: 'networkidle', timeout: 40000 }).catch(() => {});
+    if (/login|loginView/i.test(page.url())) {
+      return { ok: false, needLogin: true, message: '로그인 세션이 없습니다. 먼저 apply_login.', steps };
     }
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    steps.push(`페이지 열기: ${url}`);
-
-    const applyBtn = page.getByRole('link', { name: /활용신청/ }).first()
-      .or(page.getByRole('button', { name: /활용신청/ }).first());
-    await applyBtn.click({ timeout: 15000 });
-    steps.push('활용신청 클릭');
-    await page.waitForLoadState('domcontentloaded');
-
-    const purposeBox = page.locator('textarea').first();
-    if (await purposeBox.count()) {
-      await purposeBox.fill(purpose, { timeout: 8000 }).catch(() => {});
-      steps.push('활용목적 입력');
+    if (!page.url().includes('AcountRequestForm') && !(await page.locator('textarea[name="prcusePurps"]').count())) {
+      return { ok: false, message: '신청 폼을 열지 못했습니다. (LINK형 API이거나 기업회원 전용일 수 있어요)', steps, pageHint: page.url() };
     }
+    steps.push('신청 폼 열기');
 
-    const boxes = page.locator('input[type="checkbox"]');
-    const n = await boxes.count();
-    for (let i = 0; i < n; i++) {
-      const b = boxes.nth(i);
-      if (await b.isVisible().catch(() => false) && !(await b.isChecked().catch(() => false))) {
-        await b.check({ timeout: 3000 }).catch(() => {});
-      }
-    }
-    if (n) steps.push(`동의 체크 ${n}개`);
+    // 활용목적 설명(필수)
+    await page.fill('textarea[name="prcusePurps"]', purpose, { timeout: 8000 }).catch(() => {});
+    steps.push('활용목적 입력');
 
-    const submit = page.getByRole('button', { name: /^신청$|신청하기|활용신청 신청/ }).first()
-      .or(page.getByRole('link', { name: /^신청$|신청하기/ }).first());
-    await submit.click({ timeout: 10000 });
-    steps.push('신청 제출');
+    // 이용허락범위 동의 (숨은 input → 라벨 클릭). 상세기능은 기본 전체선택.
+    const agree = page.locator('label:has-text("동의합니다")');
+    const an = await agree.count();
+    for (let i = 0; i < an; i++) await agree.nth(i).click({ timeout: 2000 }).catch(() => {});
+    steps.push('이용허락 동의');
+
+    // 제출 (확인 다이얼로그 → accept, 완료 다이얼로그 수신)
+    await page.getByRole('button', { name: /활용\s*신청하기/ }).first().click({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(3500);
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    steps.push('제출');
 
-    const bodyText = await page.locator('body').innerText().catch(() => '');
-    const ok = /신청이?\s*(완료|접수)|승인|정상적으로|신청되었습니다/.test(bodyText);
+    const msg = dialogs.join(' | ');
+    const done = /신청이?\s*완료|완료되었|정상적으로\s*신청/.test(msg);
+    const already = /이미.*신청|신청.*내역이\s*있/.test(msg);
     return {
-      ok,
-      message: ok
-        ? '활용신청을 제출했습니다. (자동승인 API 면 바로, 아니면 심사 후 발급)'
-        : '신청 버튼까지 진행했으나 완료 문구를 확인하지 못했습니다. showBrowser:true 로 과정을 확인하거나 포털에서 결과를 보세요.',
+      ok: done,
+      already,
+      message: done
+        ? `활용신청 완료 (자동승인 API 는 1~2시간 후 호출 가능). ${already ? '※ 이미 신청된 API' : ''}`
+        : (already ? '이미 신청된 API 입니다.' : '완료 문구를 확인하지 못했습니다. showBrowser:true 로 확인하세요.'),
+      dialog: msg.slice(0, 160),
       steps,
-      pageHint: bodyText.replace(/\s+/g, ' ').slice(0, 300),
+      landedUrl: page.url(),
     };
   });
 }
@@ -165,13 +173,21 @@ export async function applyForApi({ idOrUrl, purpose = 'AI 개발 및 학습용'
 export async function listMyApplications({ headless = true } = {}) {
   return withContext({ headless }, async (ctx) => {
     const page = await ctx.newPage();
-    if (!(await isAuthed(page))) {
+    await page.goto(`${BASE}/iim/api/selectAcountList.do`, { waitUntil: 'networkidle', timeout: 40000 }).catch(() => {});
+    if (/login|loginView/i.test(page.url())) {
       return { ok: false, needLogin: true, message: '로그인 세션이 없습니다. 먼저 apply_login.' };
     }
-    await page.goto(`${BASE}/iim/api/selectAcountList.do`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-    const rows = await page.locator('table tbody tr').allInnerTexts().catch(() => []);
-    const items = rows.map((r) => r.replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 50);
-    return { ok: true, count: items.length, items };
+    const data = await page.evaluate(() => {
+      const body = document.body.innerText;
+      const m = body.match(/활용신청\s*현황\s*(\d+)/);
+      const total = m ? Number(m[1]) : null;
+      // [승인]/[신청]/[반려] 로 시작하거나 데이터명 패턴인 항목
+      const names = [...document.querySelectorAll('a, td, .title, .tit, strong')]
+        .map((e) => e.innerText.trim())
+        .filter((t) => /^\[(승인|신청|반려|중지)\]/.test(t) || (/_|서비스|조회|정보/.test(t) && t.length > 6 && t.length < 60));
+      return { total, items: [...new Set(names)].slice(0, 30) };
+    });
+    return { ok: true, total: data.total, count: data.items.length, items: data.items };
   });
 }
 
