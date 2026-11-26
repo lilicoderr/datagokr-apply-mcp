@@ -60,7 +60,7 @@ function summarizeResult(r) {
   return summary;
 }
 
-export function registerTools(server, { registry, fetchImpl, usage, sleep } = {}) {
+export function registerTools(server, { registry, fetchImpl, usage, sleep, logger } = {}) {
   // ── call_api : 핵심 도구 ──
   server.tool('call_api', {
     description: '공공데이터포털 오픈API 를 호출한다. url(또는 저장된 endpoint 별칭)과 params 를 주면 '
@@ -80,7 +80,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep } = {}
     },
   }, async (args) => {
     const { url, params, serviceKey, keyName } = resolveCall(args, registry);
-    const r = await callApi({ url, params, serviceKey, method: args.method || 'GET', fetchImpl, sleep });
+    const r = await callApi({ url, params, serviceKey, method: args.method || 'GET', fetchImpl, sleep, logger });
     usage?.record(keyName, { ok: r.ok });
     const 요약 = summarizeResult(r);
     if (args.itemsOnly) {
@@ -121,7 +121,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep } = {}
     let pages = 0;
     let last;
     for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
-      last = await callApi({ url, params: { ...params, pageNo, numOfRows }, serviceKey, fetchImpl, sleep });
+      last = await callApi({ url, params: { ...params, pageNo, numOfRows }, serviceKey, fetchImpl, sleep, logger });
       usage?.record(keyName, { ok: last.ok });
       pages++;
       if (!last.ok) break;

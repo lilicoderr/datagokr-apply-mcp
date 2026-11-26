@@ -25,7 +25,8 @@ const HELP = `datagokr-apply-mcp v${pkg.version}
 환경 변수:
   DATAGO_CONFIG   키 저장 파일 (기본 ~/.datago-mcp.json)
   DATAGO_USAGE    호출량 집계 파일 (기본 ~/.datago-usage.json)
-  DATAGO_HOME     로그인 세션 폴더 (기본 ~/.datagokr-mcp)`;
+  DATAGO_HOME     로그인 세션 폴더 (기본 ~/.datagokr-mcp)
+  DATAGO_DEBUG    1 이면 요청 URL/상태를 stderr 로 출력 (serviceKey 는 ***)`;
 
 if (arg === '--version' || arg === '-v') {
   console.log(pkg.version);
@@ -47,7 +48,9 @@ if (arg === 'doctor') {
 }
 
 const server = createServer({ name: 'datagokr-mcp', version: pkg.version });
-registerTools(server, { registry, usage });
+// DATAGO_DEBUG=1 이면 요청/응답 상태를 stderr 로 남긴다 (serviceKey 는 가림)
+const logger = process.env.DATAGO_DEBUG ? (m) => console.error(`[datagokr-mcp] ${m}`) : undefined;
+registerTools(server, { registry, usage, logger });
 registerApplyTools(server); // 활용신청 자동화(playwright-core 있을 때만)
 server.tool('doctor', {
   description: '설치·키·네트워크·브라우저·로그인 세션을 점검해 "왜 안 되는지"와 고치는 방법을 알려준다. '

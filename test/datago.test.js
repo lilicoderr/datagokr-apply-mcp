@@ -168,3 +168,21 @@ test('callApi: INFO-000 응답도 ok 로 판정', async () => {
   const r = await callApi({ url: 'http://x', serviceKey: 'k', fetchImpl });
   assert.equal(r.ok, true);
 });
+
+import { maskUrl } from '../src/datago.js';
+
+test('maskUrl: serviceKey 값을 가림 (? 와 & 위치 모두)', () => {
+  assert.equal(maskUrl('http://x/api?serviceKey=AAAA%2BBBB&a=1'), 'http://x/api?serviceKey=***&a=1');
+  assert.equal(maskUrl('http://x/api?a=1&serviceKey=SECRET'), 'http://x/api?a=1&serviceKey=***');
+  assert.equal(maskUrl('http://x/api?a=1'), 'http://x/api?a=1');
+});
+
+test('callApi logger: 키가 로그에 남지 않는다', async () => {
+  const logs = [];
+  const fetchImpl = async () => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, text: async () => '{"response":{"header":{"resultCode":"00"}}}' });
+  await callApi({ url: 'http://x/api', params: { a: 1 }, serviceKey: 'TOPSECRETKEY', fetchImpl, logger: (m) => logs.push(m) });
+  assert.equal(logs.length, 2);
+  assert.match(logs[0], /serviceKey=\*\*\*/);
+  assert.ok(!logs.join('\n').includes('TOPSECRETKEY'));
+  assert.match(logs[1], /HTTP 200/);
+});

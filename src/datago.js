@@ -56,6 +56,11 @@ export function hintFor(code) {
   return RESULT_HINTS[c] || null;
 }
 
+// 로그/오류 메시지용: serviceKey 값을 가린다 (키가 로그에 남지 않게)
+export function maskUrl(url) {
+  return String(url).replace(/([?&]serviceKey=)[^&]*/gi, '$1***');
+}
+
 // 정상 응답 코드: 00/0000(표준), INFO-000(서울 열린데이터 계열), NORMAL_SERVICE/OK(일부 기관)
 export function isSuccessCode(code) {
   const s = String(code ?? '').trim();
@@ -144,7 +149,7 @@ export function describeNetworkError(e, timeoutMs) {
  */
 export async function callApi({
   url, params = {}, serviceKey, method = 'GET', body, timeoutMs = 15000, fetchImpl = DEFAULT_FETCH,
-  retries = 2, retryDelayMs = 500, sleep = DEFAULT_SLEEP,
+  retries = 2, retryDelayMs = 500, sleep = DEFAULT_SLEEP, logger,
 }) {
   if (!url) throw new Error('url 이 필요합니다.');
   let attempts = 0;
@@ -154,8 +159,11 @@ export async function callApi({
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     let res;
+    const t0 = Date.now();
     try {
+      logger?.(`→ ${method} ${maskUrl(fullUrl)}`);
       res = await fetchImpl(fullUrl, { method, body, signal: ctrl.signal });
+      logger?.(`← HTTP ${res.status} (${Date.now() - t0}ms)`);
     } finally {
       clearTimeout(timer);
     }
