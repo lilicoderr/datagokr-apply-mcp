@@ -1,6 +1,6 @@
 {
   "name": "datagokr-apply-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "공공데이터포털(data.go.kr) 오픈API MCP 서버 — API 호출·키 관리에 더해, 브라우저 자동화로 활용신청(키 발급)까지 자동화",

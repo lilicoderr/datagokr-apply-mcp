@@ -19,7 +19,7 @@ export function registerApplyTools(server) {
     }, async () => text(
       '활용신청 자동화를 쓰려면 이 프로젝트 폴더에서 한 번 설치하세요:\n'
       + '  npm install playwright-core\n'
-      + '  npx playwright@1.49.1 install chromium\n'
+      + '  npx playwright-core install chromium\n'
       + '설치 후 MCP 서버를 재시작하면 apply_login / apply_api 가 활성화됩니다.\n'
       + '※ 비밀번호는 저장하지 않고, 로그인 세션만 홈 폴더(저장소 밖)에 보관합니다.'));
     return;
