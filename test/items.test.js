@@ -86,7 +86,7 @@ test('fetch_all: 페이지를 순회해 합치고 사용량 기록', async () =>
   const usage = createUsage(tmp('u.json'));
   const s = createServer();
   const reg = createRegistry(tmp('c.json'));
-  reg.saveKey('k', 'plainkey');
+  reg.saveKey('k', 'plainkey0123456789');
   registerTools(s, { registry: reg, fetchImpl, usage, sleep: async () => {} });
   const res = await callTool(s, 'fetch_all', { url: 'http://x/api', numOfRows: 2 });
   const out = JSON.parse(res.result.content[0].text);
@@ -101,7 +101,7 @@ test('fetch_all: maxPages 로 상한, 잘림 표시', async () => {
   const fetchImpl = mockFetch([page([{ i: 1 }, { i: 2 }], 1, 99), page([{ i: 3 }, { i: 4 }], 2, 99)]);
   const s = createServer();
   const reg = createRegistry(tmp('c.json'));
-  reg.saveKey('k', 'plainkey');
+  reg.saveKey('k', 'plainkey0123456789');
   registerTools(s, { registry: reg, fetchImpl, sleep: async () => {} });
   const out = JSON.parse((await callTool(s, 'fetch_all', { url: 'http://x', numOfRows: 2, maxPages: 2 })).result.content[0].text);
   assert.equal(out.조회페이지, 2);
@@ -112,7 +112,7 @@ test('call_api itemsOnly: 항목만 간추려 반환', async () => {
   const fetchImpl = mockFetch([page([{ i: 1 }, { i: 2 }, { i: 3 }], 1, 3)]);
   const s = createServer();
   const reg = createRegistry(tmp('c.json'));
-  reg.saveKey('k', 'plainkey');
+  reg.saveKey('k', 'plainkey0123456789');
   registerTools(s, { registry: reg, fetchImpl });
   const out = JSON.parse((await callTool(s, 'call_api', { url: 'http://x', itemsOnly: true, maxItems: 2 })).result.content[0].text);
   assert.equal(out.항목수, 3);

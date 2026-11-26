@@ -15,22 +15,34 @@ const BLANK = { keys: {}, defaultKey: null, endpoints: {} };
 
 export function createRegistry(file = defaultConfigPath()) {
   function load() {
+    let raw;
     try {
-      const raw = fs.readFileSync(file, 'utf8');
+      raw = fs.readFileSync(file, 'utf8');
+    } catch {
+      return structuredClone(BLANK); // 파일 없음 = 첫 사용
+    }
+    try {
       const obj = JSON.parse(raw);
       return {
         keys: obj.keys && typeof obj.keys === 'object' ? obj.keys : {},
         defaultKey: obj.defaultKey || null,
         endpoints: obj.endpoints && typeof obj.endpoints === 'object' ? obj.endpoints : {},
       };
-    } catch {
+    } catch (e) {
+      // 손상된 파일을 빈 상태로 덮어쓰면 저장된 키가 전부 사라진다 → 백업 후 진행
+      const bak = `${file}.corrupt-${Date.now()}.bak`;
+      try { fs.copyFileSync(file, bak); } catch { /* 백업 실패해도 계속 */ }
+      console.error(`[datagokr-mcp] 설정 파일이 손상돼 백업했어요: ${bak} (${e.message})`);
       return structuredClone(BLANK);
     }
   }
 
+  // 임시 파일에 쓰고 rename → 쓰는 도중 종료돼도 기존 파일이 깨지지 않음. 키 파일은 본인만 읽도록(0600).
   function save(state) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(state, null, 2) + '\n', 'utf8');
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(tmp, file);
   }
 
   return {
@@ -53,8 +65,11 @@ export function createRegistry(file = defaultConfigPath()) {
     },
     saveKey(name, key, note = '') {
       if (!name || !key) throw new Error('name 과 key 가 필요합니다.');
+      const cleaned = String(key).trim();
+      if (/\s/.test(cleaned)) throw new Error('키 중간에 공백/줄바꿈이 있어요. 포털에서 복사할 때 섞여 들어간 것 같으니 다시 확인하세요.');
+      if (cleaned.length < 16) throw new Error(`키가 너무 짧아요(${cleaned.length}자). 포털 개발계정의 "일반 인증키"는 보통 64자 안팎이에요.`);
       const s = load();
-      s.keys[name] = { key: String(key), note: String(note) };
+      s.keys[name] = { key: cleaned, note: String(note) };
       if (!s.defaultKey) s.defaultKey = name;
       save(s);
       return { name, isDefault: s.defaultKey === name };

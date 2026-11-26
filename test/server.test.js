@@ -87,12 +87,12 @@ test('registerTools: 전체 도구 등록 + call_api 가 저장 키 사용', asy
     assert.ok(names.includes(t), `도구 누락: ${t}`);
   }
   // 키 저장 후 호출
-  await s.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'save_key', arguments: { name: 'k', key: 'plain+key/' } } });
+  await s.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'save_key', arguments: { name: 'k', key: 'plain+key/0123456789ab' } } });
   const res = await s.handle({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'call_api', arguments: { url: 'http://api/x', params: { pageNo: 1 } } } });
   const out = JSON.parse(res.result.content[0].text);
   assert.equal(out.요약.ok, true);
   assert.equal(out.요약.resultCode, '00');
-  assert.match(calls[0], /serviceKey=plain%2Bkey%2F/); // 디코딩 키가 인코딩돼 전송
+  assert.match(calls[0], /serviceKey=plain%2Bkey%2F0123456789ab/); // 디코딩 키가 인코딩돼 전송
 });
 
 test('call_api: 키 없으면 친절한 에러(isError)', async () => {
@@ -109,4 +109,34 @@ test('extractDatasetCards: 링크 패턴 파싱', () => {
   assert.equal(items.length, 2);
   assert.equal(items[0].id, '15012345');
   assert.match(items[0].link, /15012345\/openapi/);
+});
+
+// ── 레지스트리 안전성 ──
+test('레지스트리: 손상된 파일은 백업하고 키를 날리지 않는다', () => {
+  const f = tmpFile();
+  fs.writeFileSync(f, '{"keys": {"main": {"key": "abcdefghijklmnop1234"');  // 잘린 JSON
+  const reg = createRegistry(f);
+  assert.equal(reg.getKey(), null);                  // 읽기는 빈 상태
+  reg.saveKey('new', 'abcdefghijklmnop5678');        // 저장은 가능
+  const baks = fs.readdirSync(path.dirname(f)).filter((n) => n.includes('.corrupt-'));
+  assert.equal(baks.length >= 1, true, '손상 파일 백업 생성');
+  assert.match(fs.readFileSync(path.join(path.dirname(f), baks[0]), 'utf8'), /abcdefghijklmnop1234/);
+});
+
+test('레지스트리: 저장은 원자적(임시 파일 남지 않음)', () => {
+  const f = tmpFile();
+  const reg = createRegistry(f);
+  reg.saveKey('a', 'abcdefghijklmnop1234');
+  reg.saveKey('b', 'abcdefghijklmnop5678');
+  const leftovers = fs.readdirSync(path.dirname(f)).filter((n) => n.endsWith('.tmp'));
+  assert.deepEqual(leftovers, []);
+  assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).defaultKey, 'a');
+});
+
+test('레지스트리: 공백 섞인/너무 짧은 키 거부, 앞뒤 공백은 제거', () => {
+  const reg = createRegistry(tmpFile());
+  assert.throws(() => reg.saveKey('x', 'abcdefghijkl mnopqrst'), /공백/);
+  assert.throws(() => reg.saveKey('x', 'short'), /짧아요/);
+  reg.saveKey('ok', '  abcdefghijklmnop1234\n');
+  assert.equal(reg.getKey('ok'), 'abcdefghijklmnop1234');
 });
