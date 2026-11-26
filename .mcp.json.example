@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "datagokr": {
+      "command": "node",
+      "args": ["/절대경로/datagokr-apply-mcp/bin/server.js"]
+    }
+  }
+}
