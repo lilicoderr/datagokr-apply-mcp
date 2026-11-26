@@ -5,7 +5,7 @@
 
 import { callApi, describeResultCode, isEncodedKey, RESULT_CODES } from './datago.js';
 import { extractItems, hasMore } from './items.js';
-import { fetchApiSpec, buildExampleParams } from './portal.js';
+import { fetchApiSpec, buildExampleParams, searchDatasets } from './portal.js';
 
 const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
 
@@ -214,23 +214,23 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep } = {}
 
   // ── 데이터셋 검색 (베스트 에포트: 포털 공개 검색) ──
   server.tool('search_datasets', {
-    description: '공공데이터포털에서 키워드로 오픈API/데이터셋을 검색한다(공개 검색 기반, 베스트 에포트). '
-      + '포털 구조 변경 시 동작하지 않을 수 있다.',
+    description: '공공데이터포털에서 키워드로 오픈API 를 검색한다(로그인 불필요). 제목·분류·제공기관·요약·활용신청 수를 돌려준다. '
+      + '대상을 고른 뒤 describe_api 로 명세를 확인하고 call_api 로 호출한다. 키가 없으면 apply_api 로 활용신청. '
+      + '(포털 공개 검색 페이지 기반이라 구조 변경 시 동작하지 않을 수 있다)',
     inputSchema: { type: 'object', required: ['query'], properties: {
-      query: { type: 'string' }, page: { type: 'number' },
+      query: { type: 'string', description: '검색어 (예: "버스 도착", "미세먼지")' },
+      page: { type: 'number', description: '페이지 (기본 1, 페이지당 10건)' },
     } },
   }, async (a) => {
-    const fetchFn = fetchImpl || ((...x) => globalThis.fetch(...x));
     const page = a.page || 1;
-    const url = `https://www.data.go.kr/tcs/dss/selectDataSetList.do?dType=API&keyword=${encodeURIComponent(a.query)}&currentPage=${page}&perPage=10`;
+    const portalUrl = `https://www.data.go.kr/tcs/dss/selectDataSetList.do?dType=API&keyword=${encodeURIComponent(a.query)}`;
     try {
-      const res = await fetchFn(url, { headers: { 'User-Agent': 'data-go-mcp' } });
-      const html = await res.text();
-      const items = extractDatasetCards(html);
-      if (!items.length) {
-        return text(`'${a.query}' 검색 결과를 파싱하지 못했어요. 포털에서 직접 확인: https://www.data.go.kr/tcs/dss/selectDataSetList.do?keyword=${encodeURIComponent(a.query)}`);
+      const r = await searchDatasets(a.query, { page, fetchImpl });
+      if (r.items.length) {
+        return pretty({ query: a.query, page, 전체: r.total, count: r.items.length, items: r.items,
+          다음: '마음에 드는 항목의 id 로 describe_api 를 호출해 요청주소/파라미터를 확인하세요.' });
       }
-      return pretty({ query: a.query, page, count: items.length, items });
+      return text(`'${a.query}' 검색 결과가 없거나 파싱하지 못했어요. 포털에서 직접 확인: ${portalUrl}`);
     } catch (e) {
       return text(`검색 요청 실패: ${e.message}\n포털에서 직접 확인: https://www.data.go.kr/tcs/dss/selectDataSetList.do?keyword=${encodeURIComponent(a.query)}`);
     }
