@@ -52,11 +52,16 @@ npm install playwright-core          # 자동신청 쓸 때만
 npx playwright@1.49.1 install chromium   # 번들 브라우저 (사용자 브라우저 안 건드림)
 ```
 
-1. **apply_login** — 브라우저 창이 뜨면 **직접 로그인**(비번은 당신만 입력, 저장 안 됨). 한 번만.
-2. **apply_api** `{ idOrUrl: "15012345", purpose: "AI 학습용" }` — 그 오픈API 에 활용신청 자동 제출.
-3. **my_applications** — 신청/발급 목록 확인 → 발급된 키를 `save_key` 로 저장하면 `call_api` 에서 바로 사용.
+AI(Claude)가 쓰는 흐름 — 각 도구는 "언제 쓰고 다음에 뭘 할지"가 설명에 들어 있다.
 
-> 자동신청은 포털 페이지 구조에 의존하는 best-effort 다. 버튼/폼이 다르면 `showBrowser: true` 로 과정을 보며 조정하거나, 아래 수동 절차를 따른다.
+1. **apply_status** — 로그인됐는지 확인.
+2. 안 돼 있으면 **apply_login** — 호출하면 **브라우저 창만 열고 바로 반환**(기다리지 않음). 사용자는 그 창에서 **그냥 로그인만** 하면 됨(비번은 저장 안 됨). 로그인하면 세션이 몇 초마다 자동 저장되고, 다음 `apply_status` 에서 로그인 확인되면 창이 자동으로 닫힌다. (보통 한 번만)
+3. **apply_api** `{ idOrUrl: "15012345" }` — 그 오픈API 에 활용신청 자동 제출. 여러 개면 id 마다 반복 호출. 개인회원 자동승인 API 는 즉시 승인.
+4. **my_applications** — 신청/승인 현황 확인 → 발급 키를 `save_key` 로 저장하면 `call_api` 로 바로 호출.
+
+> **사용자 입장**: `apply_login` 뒤 뜬 창에서 로그인만 하면 끝. 타이밍·복사붙여넣기 없음.
+> 자동신청은 **개인회원 + REST형 자동승인 API** 에서 동작한다. LINK형(외부 바로가기)·기업회원 전용은 `apply_api` 가 "신청 폼을 열지 못했다"고 알려준다.
+> 실제로 개인회원 자동승인 API 11건 신청·승인으로 검증했다.
 
 ### (대안) 수동 발급
 
@@ -76,7 +81,8 @@ npx playwright@1.49.1 install chromium   # 번들 브라우저 (사용자 브라
 | `save_endpoint` · `list_endpoints` · `remove_endpoint` | 자주 쓰는 URL 을 별칭으로 |
 | `explain_error` · `list_error_codes` | resultCode → 한글 설명 |
 | `apply_guide` | 활용신청(키 발급) 방법 안내(글) |
-| **`apply_login`** | 브라우저로 data.go.kr 로그인(세션 보관, 비번 미저장) |
+| **`apply_login`** | 로그인 창 열기(논블로킹, 비번 미저장) |
+| **`apply_status`** | 로그인 세션 유효 확인 |
 | **`apply_api`** | 특정 오픈API 에 **활용신청 자동 제출** |
 | **`apply_status` · `my_applications`** | 로그인 상태·신청/발급 목록 확인 |
 

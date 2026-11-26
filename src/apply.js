@@ -67,45 +67,65 @@ async function isAuthed(page) {
 }
 
 export async function checkLogin() {
-  return withContext({ headless: true }, async (ctx) => {
+  const result = await withContext({ headless: true }, async (ctx) => {
     const page = await ctx.newPage();
     const loggedIn = await isAuthed(page);
     return { loggedIn };
   });
+  // 로그인 확인되면 열려 있던 로그인 창을 닫는다.
+  if (result.loggedIn && loginWindow) await closeLoginWindow();
+  return result;
 }
 
-// 사람이 직접 로그인(headful). 로그인되면 세션을 STATE_FILE 로 저장하고 종료.
-export async function interactiveLogin({ timeoutMs = 300000 } = {}) {
-  if (!chromium) throw new Error('playwright-core 가 필요합니다.');
-  fs.mkdirSync(HOME_DIR, { recursive: true });
-  const browser = await chromium.launch({ headless: false, args: ['--no-first-run', '--no-default-browser-check'] });
-  try {
-    const context = await browser.newContext(contextOptions(true));
-    const page = await context.newPage();
-    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    try {
-      await page.getByRole('link', { name: /로그인/ }).first().click({ timeout: 5000 });
-    } catch { /* 사용자가 직접 로그인 진행 */ }
+// 열려 있는 로그인 창(논블로킹). 서버가 살아 있는 동안 유지된다.
+let loginWindow = null;
 
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      // 로그인 완료 판정: 메인/마이페이지 어디서든 auth 로 튕기지 않으면 성공
-      const url = page.url();
-      if (!/auth\.data\.go\.kr|common-login/i.test(url)) {
-        const probe = await context.newPage();
-        const ok = await isAuthed(probe);
-        await probe.close();
-        if (ok) {
-          await context.storageState({ path: STATE_FILE });
-          return { ok: true, message: '로그인 성공. 세션을 저장했습니다.' };
-        }
-      }
-      await page.waitForTimeout(2000);
-    }
-    return { ok: false, message: '시간 초과: 로그인 창에서 직접 로그인한 뒤 다시 시도하세요.' };
-  } finally {
-    await browser.close();
-  }
+export function isLoginWindowOpen() {
+  return loginWindow !== null;
+}
+
+// 로그인 창을 "열기만" 하고 즉시 반환(논블로킹). 사용자가 로그인하면 세션이 몇 초마다 자동 저장된다.
+// 로그인 완료는 checkLogin() 으로 확인하며, 확인되면 창은 자동으로 닫힌다.
+export async function startLogin({ timeoutMin = 20 } = {}) {
+  if (!chromium) throw new Error('playwright-core 가 필요합니다. `npm install playwright-core` 후 사용하세요.');
+  if (loginWindow) return { started: true, already: true, message: '로그인 창이 이미 열려 있어요. 그 창에서 로그인하세요.' };
+  fs.mkdirSync(HOME_DIR, { recursive: true });
+  const profile = path.join(HOME_DIR, 'login-profile');
+  const ctx = await chromium.launchPersistentContext(profile, {
+    headless: false,
+    args: ['--no-first-run', '--no-default-browser-check'],
+    viewport: { width: 1280, height: 900 },
+    locale: 'ko-KR',
+  });
+  const page = ctx.pages()[0] || await ctx.newPage();
+  await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  try { await page.getByRole('link', { name: /로그인/ }).first().click({ timeout: 4000 }); } catch { /* 직접 진행 */ }
+
+  // 세션 쿠키는 세션 스코프라, 열려 있는 동안 주기적으로 스냅샷해 둬야 재사용된다.
+  const timer = setInterval(() => { ctx.storageState({ path: STATE_FILE }).catch(() => {}); }, 4000);
+  timer.unref?.();
+  const closeTimer = setTimeout(() => { closeLoginWindow().catch(() => {}); }, timeoutMin * 60000);
+  closeTimer.unref?.();
+  loginWindow = { ctx, timer, closeTimer };
+  return {
+    started: true,
+    message: `로그인 창을 열었어요. 그 창에서 data.go.kr 에 로그인하세요(비번은 저장되지 않아요). 로그인하면 자동 저장되며, apply_status 로 확인하면 창이 닫혀요. (최대 ${timeoutMin}분)`,
+  };
+}
+
+async function closeLoginWindow() {
+  if (!loginWindow) return;
+  const w = loginWindow;
+  loginWindow = null;
+  clearInterval(w.timer);
+  clearTimeout(w.closeTimer);
+  try { await w.ctx.storageState({ path: STATE_FILE }); } catch { /* 무시 */ }
+  try { await w.ctx.close(); } catch { /* 무시 */ }
+}
+
+// 호환용: 기존 이름. 이제는 창만 열고 반환한다.
+export async function interactiveLogin(opts = {}) {
+  return startLogin(opts);
 }
 
 export function extractDataPk(idOrUrl) {
