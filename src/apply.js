@@ -30,6 +30,10 @@ try {
 export function isAvailable() {
   return chromium !== null;
 }
+// playwright-core 는 있어도 번들 Chromium 을 안 받았으면 launch 가 실패한다 → 미리 확인
+export function browserInstalled() {
+  try { return chromium !== null && fs.existsSync(chromium.executablePath()); } catch { return false; }
+}
 export function stateFile() {
   return STATE_FILE;
 }
