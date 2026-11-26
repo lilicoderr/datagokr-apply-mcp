@@ -4,3 +4,9 @@ node_modules/
 # 사용자 키/설정은 커밋하지 않음
 config.json
 .datago-mcp.json
+
+# 브라우저 로그인 세션(쿠키) — 절대 커밋 금지
+*-profile/
+.datagokr-mcp/
+cookies*.json
+credentials*.json

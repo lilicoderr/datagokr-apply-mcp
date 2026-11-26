@@ -1,13 +1,31 @@
 {
-  "name": "data-go-mcp",
+  "name": "datagokr-apply-mcp",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "공공데이터포털(data.go.kr) 오픈API를 다루는 MCP 서버 (무의존성)",
-  "bin": { "data-go-mcp": "bin/server.js" },
+  "description": "공공데이터포털(data.go.kr) 오픈API MCP 서버 — API 호출·키 관리에 더해, 브라우저 자동화로 활용신청(키 발급)까지 자동화",
+  "bin": {
+    "datagokr-apply-mcp": "bin/server.js"
+  },
   "scripts": {
     "start": "node bin/server.js",
     "test": "node --test"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GigongDohyun/datagokr-mcp.git"
+  },
+  "keywords": [],
+  "author": "GigongDohyun",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/GigongDohyun/datagokr-mcp/issues"
+  },
+  "homepage": "https://github.com/GigongDohyun/datagokr-mcp#readme",
+  "optionalDependencies": {
+    "playwright-core": "^1.49.1"
+  }
 }
