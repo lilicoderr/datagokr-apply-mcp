@@ -190,6 +190,25 @@ export async function applyForApi({ idOrUrl, purpose = '개인 학습 및 서비
   });
 }
 
+// 여러 오픈API 에 순차 활용신청. 결과 요약 반환.
+export async function applyForApis(idList, { purpose, delayMs = 1200, headless = true } = {}) {
+  const ids = (Array.isArray(idList) ? idList : [idList]).map((x) => String(x).trim()).filter(Boolean);
+  const results = [];
+  let done = 0; let already = 0; let failed = 0;
+  for (const idOrUrl of ids) {
+    try {
+      const r = await applyForApi({ idOrUrl, purpose, headless });
+      results.push({ idOrUrl, ok: r.ok, already: r.already, message: r.message });
+      if (r.ok) done += 1; else if (r.already) already += 1; else failed += 1;
+    } catch (e) {
+      results.push({ idOrUrl, ok: false, error: e.message });
+      failed += 1;
+    }
+    if (delayMs) await new Promise((res) => setTimeout(res, delayMs));
+  }
+  return { total: ids.length, done, already, failed, results };
+}
+
 export async function listMyApplications({ headless = true } = {}) {
   return withContext({ headless }, async (ctx) => {
     const page = await ctx.newPage();

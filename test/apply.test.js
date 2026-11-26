@@ -19,3 +19,11 @@ test('isAvailable / profileDir', () => {
   // 세션 폴더는 저장소 밖(홈 하위)에 위치
   assert.match(stateFile(), /datagokr-mcp/);
 });
+
+test('extractDataPk: id/URL/publicDataPk 추출', async () => {
+  const { extractDataPk } = await import('../src/apply.js');
+  assert.equal(extractDataPk('15000314'), '15000314');
+  assert.equal(extractDataPk('https://www.data.go.kr/data/15000314/openapi.do'), '15000314');
+  assert.equal(extractDataPk('/tcs/dss/redirectDevAcountRequestForm.do?publicDataPk=15057552&x=1'), '15057552');
+  assert.equal(extractDataPk('none'), null);
+});

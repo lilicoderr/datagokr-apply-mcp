@@ -72,6 +72,27 @@ export function registerApplyTools(server) {
     return text(lines.join('\n'));
   });
 
+  server.tool('apply_apis', {
+    description: '[활용신청 일괄] 여러 오픈API 에 한 번에 활용신청한다. ids 에 데이터 id/URL 배열을 준다. '
+      + '많은 API 를 신청할 때 apply_api 를 반복하는 대신 이걸 쓰면 편하다. 로그인 세션 필요.',
+    inputSchema: {
+      type: 'object',
+      required: ['ids'],
+      properties: {
+        ids: { type: 'array', items: { type: 'string' }, description: '데이터 id 또는 URL 목록 (예: ["15000314","15057552"])' },
+        purpose: { type: 'string', description: '활용목적(공통). 기본 "개인 학습 및 서비스 개발용"' },
+      },
+    },
+  }, async (a) => {
+    const r = await apply.applyForApis(a.ids || [], { purpose: a.purpose });
+    const lines = [`요청 ${r.total}건 → ✅완료 ${r.done} · ↺이미 ${r.already} · ⚠️실패 ${r.failed}`];
+    for (const x of r.results) {
+      lines.push(`  ${x.ok ? '✅' : x.already ? '↺' : '⚠️'} ${x.idOrUrl}${x.error ? ` (${x.error})` : ''}`);
+    }
+    if (r.done) lines.push('발급 키는 my_applications 에서 확인 → save_key 로 저장하면 call_api 로 사용.');
+    return text(lines.join('\n'));
+  });
+
   server.tool('my_applications', {
     description: '[활용신청 확인] 마이페이지의 활용신청/발급 현황을 가져온다(승인 여부 포함). '
       + 'apply_api 후 결과 확인이나, 어떤 API 를 이미 신청했는지 볼 때 사용. 로그인 세션 필요.',
