@@ -66,8 +66,12 @@ export function parseOpenApiPage(html) {
     provider: info['제공기관'] || null,
     description: info['설명'] || null,
     format: info['데이터 포맷'] || null,
+    apiType: info['API 유형'] || null,
+    reviewType: info['심의유형'] || null,
+    cost: info['비용부과유무'] || null,
+    applications: info['활용신청 수'] || null,
     traffic: info['신청 가능 트래픽'] || null,
-    approval: info['활용승인 절차'] || null,
+    approval: info['활용승인 절차'] || info['심의유형'] || null,
     endpoint,
     serviceUrl,
     operations: parseOperations(text),
@@ -127,6 +131,56 @@ export async function searchDatasets(query, { page = 1, perPage = 10, fetchImpl 
   } finally { clearTimeout(timer); }
   if (!res.ok) throw new Error(`검색 페이지를 가져오지 못했어요(HTTP ${res.status}).`);
   return { url, ...parseSearchResults(await res.text()) };
+}
+
+// 개인회원이 개발단계에서 바로(자동승인) 쓸 수 있는 REST API 인가?
+export function isAutoApprovable(spec) {
+  if (!spec?.found && !spec?.title) return false;
+  const rest = !spec.apiType || /REST/i.test(spec.apiType);
+  const dev = String(spec.approval || '').match(/개발단계\s*:\s*([^/]+)/)?.[1] ?? String(spec.approval || '');
+  return rest && /자동승인/.test(dev);
+}
+
+// 동시 실행 수를 제한하는 map
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+/**
+ * 키워드로 "개발단계 자동승인 REST" API 만 골라낸다 — 브라우저/로그인 없이 공개 페이지만 사용.
+ * 검색 결과(최대 maxPages 페이지)의 각 상세 페이지를 4개씩 병렬로 읽어 필터링한다.
+ */
+export async function findApplyTargets(keyword, { limit = 10, maxPages = 3, concurrency = 4, fetchImpl } = {}) {
+  const targets = [];
+  const seen = new Set();
+  let scanned = 0;
+  for (let page = 1; page <= maxPages && targets.length < limit; page++) {
+    const { items } = await searchDatasets(keyword, { page, fetchImpl });
+    if (!items.length) break;
+    const fresh = items.filter((it) => !seen.has(it.id));
+    fresh.forEach((it) => seen.add(it.id));
+    const specs = await mapLimit(fresh, concurrency, (it) => fetchApiSpec(it.id, { fetchImpl }).catch(() => null));
+    fresh.forEach((it, i) => {
+      scanned++;
+      const spec = specs[i];
+      if (spec && targets.length < limit && isAutoApprovable(spec)) {
+        targets.push({
+          id: it.id, name: it.title, provider: it.provider, applications: it.applications,
+          traffic: spec.traffic, approval: spec.approval, hasEndpoint: Boolean(spec.endpoint),
+        });
+      }
+    });
+  }
+  return { keyword, scanned, count: targets.length, targets };
 }
 
 export async function fetchApiSpec(id, { fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = 15000 } = {}) {

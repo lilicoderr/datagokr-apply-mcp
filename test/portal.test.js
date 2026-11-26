@@ -121,3 +121,45 @@ test('searchDatasets: 검색 URL 구성과 오류 처리', async () => {
   await assert.rejects(() => searchDatasets('  ', { fetchImpl }), /검색어/);
   await assert.rejects(() => searchDatasets('x', { fetchImpl: async () => ({ ok: false, status: 503 }) }), /503/);
 });
+
+import { isAutoApprovable, findApplyTargets } from '../src/portal.js';
+
+test('parseOpenApiPage: 유형/심의/비용/활용신청 수', () => {
+  const s = parseOpenApiPage(html);
+  assert.equal(s.apiType, 'REST');
+  assert.match(s.approval, /자동승인/);
+  assert.equal(s.cost, '무료');
+  assert.ok(s.applications);
+});
+
+test('isAutoApprovable: REST + 개발단계 자동승인만 true', () => {
+  const base = { found: true, title: 't' };
+  assert.equal(isAutoApprovable({ ...base, apiType: 'REST', approval: '개발단계 : 자동승인 / 운영단계 : 자동승인' }), true);
+  assert.equal(isAutoApprovable({ ...base, apiType: 'REST', approval: '개발단계 : 심의승인 / 운영단계 : 심의승인' }), false);
+  assert.equal(isAutoApprovable({ ...base, apiType: 'LINK', approval: '개발단계 : 자동승인' }), false);
+  assert.equal(isAutoApprovable({ ...base, apiType: 'REST', approval: null }), false);
+  assert.equal(isAutoApprovable(null), false);
+});
+
+test('findApplyTargets: 검색 → 상세 병렬 조회 → 자동승인만 반환 (브라우저 불필요)', async () => {
+  const card = (id, t) => `<div class="in-result-item"><div class="apply-result-category"><span>분류</span><span>기관</span></div><div class="apply-result-link"><span data-ext="XML">XML</span><a href="/data/${id}/openapi.do">${t}</a></div><span class="apply-result-summary">요약</span><ul><li><strong>활용신청</strong> 10건</li></ul></div>`;
+  const detail = (title, approval, type = 'REST') => `<title>${title} | 공공데이터포털</title><ul><li><strong class="key">API 유형</strong><div class="value">${type}</div></li><li><strong class="key">심의유형</strong><div class="value">${approval}</div></li><li><strong class="key">신청 가능 트래픽</strong><div class="value">개발계정 : 1,000</div></li></ul>`;
+  const pages = {
+    '111111': detail('A', '개발단계 : 자동승인 / 운영단계 : 자동승인'),
+    '222222': detail('B', '개발단계 : 심의승인 / 운영단계 : 심의승인'),
+    '333333': detail('C', '개발단계 : 자동승인 / 운영단계 : 자동승인'),
+  };
+  const fetchImpl = async (url) => {
+    if (url.includes('selectDataSetList')) {
+      const page = Number(new URL(url).searchParams.get('currentPage'));
+      return { ok: true, status: 200, text: async () => (page === 1 ? card('111111', 'A') + card('222222', 'B') + card('333333', 'C') : '') };
+    }
+    const id = url.match(/data\/(\d+)\//)[1];
+    return { ok: true, status: 200, text: async () => pages[id] };
+  };
+  const r = await findApplyTargets('테스트', { limit: 5, fetchImpl });
+  assert.deepEqual(r.targets.map((t) => t.id), ['111111', '333333']);
+  assert.equal(r.scanned, 3);
+  const r1 = await findApplyTargets('테스트', { limit: 1, fetchImpl });
+  assert.equal(r1.targets.length, 1);
+});
