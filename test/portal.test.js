@@ -87,3 +87,37 @@ test('describe_api 도구: 파싱 불가 페이지는 안내 문구', async () =
   const res = await s.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'describe_api', arguments: { idOrUrl: '15099999' } } });
   assert.match(res.result.content[0].text, /직접 확인/);
 });
+
+import { parseSearchResults, searchDatasets } from '../src/portal.js';
+const searchHtml = fs.readFileSync(new URL('./fixtures/search-results.html', import.meta.url), 'utf8');
+
+test('parseSearchResults: 카드 → 제목/분류/기관/요약/활용신청수', () => {
+  const r = parseSearchResults(searchHtml);
+  assert.equal(r.total, 194);
+  assert.ok(r.items.length >= 2);
+  const first = r.items[0];
+  assert.equal(first.id, '15000314');
+  assert.equal(first.title, '서울특별시_버스도착정보조회 서비스'); // <em> 강조 태그 제거
+  assert.equal(first.format, 'XML');
+  assert.equal(first.category, '교통물류');
+  assert.equal(first.provider, '서울특별시');
+  assert.match(first.summary, /실시간 버스 도착예정/);
+  assert.equal(first.applications, '16,768건');
+  assert.equal(first.link, 'https://www.data.go.kr/data/15000314/openapi.do');
+});
+
+test('parseSearchResults: 빈/이상한 HTML', () => {
+  assert.deepEqual(parseSearchResults(''), { total: null, items: [] });
+  assert.equal(parseSearchResults('<div>없음</div>').items.length, 0);
+});
+
+test('searchDatasets: 검색 URL 구성과 오류 처리', async () => {
+  const seen = [];
+  const fetchImpl = async (url) => { seen.push(url); return { ok: true, status: 200, text: async () => searchHtml }; };
+  const r = await searchDatasets('버스 도착', { page: 2, fetchImpl });
+  assert.match(seen[0], /keyword=%EB%B2%84%EC%8A%A4%20%EB%8F%84%EC%B0%A9/);
+  assert.match(seen[0], /currentPage=2/);
+  assert.ok(r.items.length >= 2);
+  await assert.rejects(() => searchDatasets('  ', { fetchImpl }), /검색어/);
+  await assert.rejects(() => searchDatasets('x', { fetchImpl: async () => ({ ok: false, status: 503 }) }), /503/);
+});

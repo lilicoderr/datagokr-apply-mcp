@@ -12,6 +12,7 @@ const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;
 
 export function cleanText(s) {
   return String(s ?? '')
+    .replace(/<\/?(?:em|b|i|u|mark|span|strong|a)\b[^>]*>/gi, '') // 인라인 강조는 단어를 쪼개지 않게 그냥 제거
     .replace(/<[^>]*>/g, ' ')
     .replace(/&(?:amp|lt|gt|quot|nbsp|#39);/g, (m) => ENTITIES[m])
     .replace(/\s+/g, ' ')
@@ -83,6 +84,49 @@ export function buildExampleParams(request = []) {
     if (r.required) params[r.name] = r.sample || '';
   }
   return params;
+}
+
+// ── 검색 결과 ──
+//   https://www.data.go.kr/tcs/dss/selectDataSetList.do?dType=API&keyword=... (공개)
+//   결과 카드(.in-result-item): 분류 배지, 형식(XML/JSON), 제목 링크, 요약, 제공기관/수정일/조회수/활용신청/키워드
+export function parseSearchResults(html) {
+  const text = String(html || '');
+  const total = Number((text.match(/전체\s*<span>\s*([\d,]+)\s*건/) || [])[1]?.replace(/,/g, '')) || null;
+  const starts = [...text.matchAll(/<div class="in-result-item">/g)].map((m) => m.index);
+  const items = [];
+  starts.forEach((s, i) => {
+    const block = text.slice(s, starts[i + 1] ?? s + 6000);
+    const link = block.match(/<a href="\/data\/(\d+)\/openapi\.do"[^>]*>([\s\S]*?)<\/a>/);
+    if (!link) return; // 파일데이터 등 openapi 가 아닌 카드는 제외
+    const meta = {};
+    for (const m of block.matchAll(/<strong>([\s\S]*?)<\/strong>\s*([\s\S]*?)<\/li>/g)) meta[cleanText(m[1])] = cleanText(m[2]);
+    const categories = [...(block.match(/apply-result-category[\s\S]*?<\/div>/)?.[0] || '').matchAll(/<span[^>]*>([\s\S]*?)<\/span>/g)].map((m) => cleanText(m[1]));
+    items.push({
+      id: link[1],
+      title: cleanText(link[2]),
+      format: (block.match(/data-ext="([^"]+)"/) || [])[1] || null,
+      category: categories[0] || null,
+      provider: meta['제공기관'] || categories[1] || null,
+      summary: cleanText((block.match(/class="apply-result-summary">([\s\S]*?)<\/span>/) || [])[1] || ''),
+      applications: meta['활용신청'] || null,
+      updated: meta['수정일'] || null,
+      link: `${BASE}/data/${link[1]}/openapi.do`,
+    });
+  });
+  return { total, items };
+}
+
+export async function searchDatasets(query, { page = 1, perPage = 10, fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = 15000 } = {}) {
+  if (!String(query || '').trim()) throw new Error('검색어(query)가 필요합니다.');
+  const url = `${BASE}/tcs/dss/selectDataSetList.do?dType=API&keyword=${encodeURIComponent(query)}&currentPage=${page}&perPage=${perPage}`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let res;
+  try {
+    res = await fetchImpl(url, { headers: { 'User-Agent': 'Mozilla/5.0 datagokr-apply-mcp' }, signal: ctrl.signal });
+  } finally { clearTimeout(timer); }
+  if (!res.ok) throw new Error(`검색 페이지를 가져오지 못했어요(HTTP ${res.status}).`);
+  return { url, ...parseSearchResults(await res.text()) };
 }
 
 export async function fetchApiSpec(id, { fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = 15000 } = {}) {
