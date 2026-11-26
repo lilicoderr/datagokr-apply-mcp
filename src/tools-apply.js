@@ -125,6 +125,9 @@ export function registerApplyTools(server) {
     if (r.needLogin) return text('❌ 로그인 안 됨 — apply_login 먼저.');
     const head = r.total != null ? `활용신청 현황 ${r.total}건` : `목록 ${r.count}건`;
     if (!r.items?.length) return text(`${head}\n(목록 항목을 파싱하지 못했어요. 포털 마이페이지에서 확인하세요.)`);
-    return text(`${head}\n` + r.items.map((x, i) => `${i + 1}. ${x}`).join('\n'));
+    const counts = Object.entries(r.byStatus || {}).map(([k, v]) => `${k} ${v}`).join(' · ');
+    const hint = r.byStatus?.['승인']
+      ? '\n→ 승인된 API 의 인증키는 포털 마이페이지 > 개발계정에서 확인해 save_key 로 저장하세요.' : '';
+    return text(`${head}${counts ? ` (${counts})` : ''}\n` + r.parsed.map((x, i) => `${i + 1}. [${x.status}] ${x.name}`).join('\n') + hint);
   });
 }

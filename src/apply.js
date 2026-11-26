@@ -293,8 +293,23 @@ export async function listMyApplications({ headless = true } = {}) {
         .filter((t) => /^\[(승인|신청|반려|중지)\]/.test(t) || (/_|서비스|조회|정보/.test(t) && t.length > 6 && t.length < 60));
       return { total, items: [...new Set(names)].slice(0, 30) };
     });
-    return { ok: true, total: data.total, count: data.items.length, items: data.items };
+    const parsed = parseApplicationItems(data.items);
+    return { ok: true, total: data.total, count: parsed.length, items: data.items, parsed, byStatus: countByStatus(parsed) };
   });
+}
+
+// "[승인] 기상청_단기예보 조회서비스" → { status: '승인', name: '기상청_단기예보 조회서비스' }
+export function parseApplicationItems(texts = []) {
+  return texts.map((t) => {
+    const m = String(t).match(/^\[(승인|신청|반려|중지)\]\s*(.*)$/);
+    return m ? { status: m[1], name: m[2].trim() } : { status: '미확인', name: String(t).trim() };
+  });
+}
+
+export function countByStatus(parsed = []) {
+  const out = {};
+  for (const p of parsed) out[p.status] = (out[p.status] || 0) + 1;
+  return out;
 }
 
 export function toOpenApiUrl(idOrUrl) {

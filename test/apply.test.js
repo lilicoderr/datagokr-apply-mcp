@@ -56,3 +56,14 @@ test('normalizeIds: 단일 값, 최대 개수 제한', () => {
 test('기본 활용목적 문구 유지', () => {
   assert.match(DEFAULT_PURPOSE, /학습/);
 });
+
+import { parseApplicationItems, countByStatus } from '../src/apply.js';
+
+test('parseApplicationItems / countByStatus', () => {
+  const parsed = parseApplicationItems(['[승인] 기상청_단기예보', '[신청] 한국천문연구원_특일 정보', '[반려]  X', '그냥 이름_서비스']);
+  assert.deepEqual(parsed[0], { status: '승인', name: '기상청_단기예보' });
+  assert.deepEqual(parsed[2], { status: '반려', name: 'X' });
+  assert.deepEqual(parsed[3], { status: '미확인', name: '그냥 이름_서비스' });
+  assert.deepEqual(countByStatus(parsed), { 승인: 1, 신청: 1, 반려: 1, 미확인: 1 });
+  assert.deepEqual(parseApplicationItems(), []);
+});
