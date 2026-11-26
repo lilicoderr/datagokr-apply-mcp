@@ -4,6 +4,7 @@
 //   (fetchImpl 주입으로 테스트에서 네트워크 없이 검증)
 
 import { callApi, describeResultCode, isEncodedKey, RESULT_CODES } from './datago.js';
+import { extractItems, hasMore } from './items.js';
 
 const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
 
@@ -21,7 +22,43 @@ const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로�
 function text(t) { return { content: [{ type: 'text', text: t }] }; }
 function pretty(obj) { return text(typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2)); }
 
-export function registerTools(server, { registry, fetchImpl } = {}) {
+// endpoint 별칭/직접 url + 키를 해석해 호출 준비물을 만든다 (call_api, fetch_all 공용)
+function resolveCall(args, registry) {
+  let url = args.url;
+  let params = { ...(args.params || {}) };
+  if (args.endpoint) {
+    const ep = registry?.getEndpoint(args.endpoint);
+    if (!ep) throw new Error(`저장된 엔드포인트가 없습니다: ${args.endpoint} (list_endpoints 로 확인)`);
+    url = ep.url;
+    params = { ...ep.params, ...params };
+  }
+  if (!url) throw new Error('url 또는 endpoint 가 필요합니다.');
+  const serviceKey = args.serviceKey || registry?.getKey(args.keyName);
+  if (!serviceKey) {
+    throw new Error(args.keyName
+      ? `저장된 키 '${args.keyName}' 가 없습니다. list_keys 로 확인하세요.`
+      : '서비스 키가 없습니다. save_key 로 저장하거나 serviceKey 를 넘기세요. (apply_guide 참고)');
+  }
+  return { url, params, serviceKey, keyName: args.keyName || registry?.listKeys().defaultKey || 'direct' };
+}
+
+function summarizeResult(r) {
+  const summary = {
+    ok: r.ok,
+    httpStatus: r.httpStatus,
+    resultCode: r.resultCode ?? '(없음)',
+    의미: r.codeMeaning || (r.ok ? '정상' : '알 수 없음'),
+    resultMsg: r.resultMsg ?? null,
+    응답형식: r.kind,
+    키인코딩: r.usedEncodedKey ? 'Encoding' : 'Decoding',
+    재시도됨: Boolean(r.retried),
+    시도횟수: r.attempts ?? 1,
+  };
+  if (!r.ok && r.hint) summary.도움말 = r.hint;
+  return summary;
+}
+
+export function registerTools(server, { registry, fetchImpl, usage, sleep } = {}) {
   // ── call_api : 핵심 도구 ──
   server.tool('call_api', {
     description: '공공데이터포털 오픈API 를 호출한다. url(또는 저장된 endpoint 별칭)과 params 를 주면 '
@@ -35,37 +72,74 @@ export function registerTools(server, { registry, fetchImpl } = {}) {
         keyName: { type: 'string', description: '사용할 저장된 키 이름 (없으면 기본 키)' },
         serviceKey: { type: 'string', description: '키를 직접 넘길 때 (저장 키 대신)' },
         method: { type: 'string', description: 'HTTP 메서드 (기본 GET)' },
+        itemsOnly: { type: 'boolean', description: 'true 면 원본 대신 목록 항목(items)과 페이징 정보만 간추려 반환 (토큰 절약)' },
+        maxItems: { type: 'number', description: 'itemsOnly 일 때 돌려줄 최대 항목 수 (기본 20)' },
       },
     },
   }, async (args) => {
-    let url = args.url;
-    let params = { ...(args.params || {}) };
-    if (args.endpoint) {
-      const ep = registry?.getEndpoint(args.endpoint);
-      if (!ep) throw new Error(`저장된 엔드포인트가 없습니다: ${args.endpoint}`);
-      url = ep.url;
-      params = { ...ep.params, ...params };
+    const { url, params, serviceKey, keyName } = resolveCall(args, registry);
+    const r = await callApi({ url, params, serviceKey, method: args.method || 'GET', fetchImpl, sleep });
+    usage?.record(keyName, { ok: r.ok });
+    const 요약 = summarizeResult(r);
+    if (args.itemsOnly) {
+      const { items, ...page } = extractItems(r.data);
+      const max = args.maxItems || 20;
+      return pretty({ 요약, 페이징: page, 항목수: items.length, 항목: items.slice(0, max), 생략됨: Math.max(0, items.length - max) });
     }
-    if (!url) throw new Error('url 또는 endpoint 가 필요합니다.');
-    const serviceKey = args.serviceKey || registry?.getKey(args.keyName);
-    if (!serviceKey) throw new Error('서비스 키가 없습니다. save_key 로 저장하거나 serviceKey 를 넘기세요. (apply_guide 참고)');
+    return pretty({ 요약, 데이터: r.data });
+  });
 
-    const r = await callApi({ url, params, serviceKey, method: args.method || 'GET', fetchImpl });
-    const summary = {
-      ok: r.ok,
-      httpStatus: r.httpStatus,
-      resultCode: r.resultCode ?? '(없음)',
-      의미: r.codeMeaning || (r.ok ? '정상' : '알 수 없음'),
-      resultMsg: r.resultMsg ?? null,
-      응답형식: r.kind,
-      키인코딩: r.usedEncodedKey ? 'Encoding' : 'Decoding',
-      재시도됨: Boolean(r.retried),
-    };
-    if (!r.ok && String(r.resultCode) === '30') {
-      summary.도움말 = '서비스키 미등록(30): 키 오타이거나 아직 활용신청 승인 전일 수 있어요. apply_guide 를 확인하세요.';
+  // ── fetch_all : 페이지 자동 순회 ──
+  server.tool('fetch_all', {
+    description: '페이지네이션이 있는 오픈API 를 pageNo 를 올려가며 모두(또는 maxPages 까지) 가져와 항목만 합쳐 돌려준다. '
+      + '"전체 목록 줘", "2025년 공휴일 전부" 같은 요청에 쓴다. 호출당 트래픽이 소모되므로 maxPages 로 상한을 둔다.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' }, endpoint: { type: 'string' },
+        params: { type: 'object', description: 'pageNo/numOfRows 는 자동 설정되므로 생략 가능' },
+        keyName: { type: 'string' }, serviceKey: { type: 'string' },
+        numOfRows: { type: 'number', description: '페이지당 항목 수 (기본 100)' },
+        maxPages: { type: 'number', description: '최대 페이지 수 (기본 5, 상한 50)' },
+        maxItems: { type: 'number', description: '응답에 담을 최대 항목 수 (기본 200)' },
+      },
+    },
+  }, async (args) => {
+    const { url, params, serviceKey, keyName } = resolveCall(args, registry);
+    const numOfRows = args.numOfRows || 100;
+    const maxPages = Math.min(Math.max(1, args.maxPages || 5), 50);
+    const all = [];
+    let totalCount = null;
+    let pages = 0;
+    let last;
+    for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
+      last = await callApi({ url, params: { ...params, pageNo, numOfRows }, serviceKey, fetchImpl, sleep });
+      usage?.record(keyName, { ok: last.ok });
+      pages++;
+      if (!last.ok) break;
+      const ex = extractItems(last.data);
+      all.push(...ex.items);
+      totalCount = ex.totalCount ?? totalCount;
+      if (!hasMore({ ...ex, pageNo, numOfRows })) break;
     }
-    if (!r.ok && String(r.resultCode) === '03') summary.도움말 = '데이터 없음(03): 파라미터 조건에 맞는 결과가 없어요.';
-    return pretty({ 요약: summary, 데이터: r.data });
+    const max = args.maxItems || 200;
+    return pretty({
+      요약: summarizeResult(last),
+      조회페이지: pages,
+      totalCount,
+      가져온항목수: all.length,
+      잘림: all.length > max || (totalCount != null && all.length < totalCount),
+      항목: all.slice(0, max),
+    });
+  });
+
+  server.tool('quota_status', {
+    description: '오늘(KST) 이 서버로 호출한 횟수를 키별로 보여주고 개발계정 일일 한도(기본 1,000회) 대비 남은 양을 추정한다. '
+      + '대량 호출 전에 확인하면 resultCode 22(한도 초과)를 피할 수 있다. (포털 실제 값이 아닌 로컬 집계)',
+    inputSchema: { type: 'object', properties: { limit: { type: 'number', description: '일일 한도 (기본 1000)' } } },
+  }, async (a) => {
+    if (!usage) return text('호출량 집계가 꺼져 있어요.');
+    return pretty(usage.summary({ limit: a.limit || undefined }));
   });
 
   // ── 키 관리 ──
