@@ -1,0 +1,10 @@
+{
+  "comment": "이 파일을 복사해 ~/.datago-mcp.json (또는 $DATAGO_CONFIG) 로 두면 됩니다. keys 는 민감정보 — 공유 금지.",
+  "keys": {
+    "main": { "key": "여기에_포털에서_발급받은_인증키", "note": "개발계정 일반 인증키" }
+  },
+  "defaultKey": "main",
+  "endpoints": {
+    "특일정보": { "url": "http://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo", "note": "공휴일 조회", "params": { "numOfRows": 50 } }
+  }
+}

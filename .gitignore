@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.env
+# 사용자 키/설정은 커밋하지 않음
+config.json
+.datago-mcp.json
