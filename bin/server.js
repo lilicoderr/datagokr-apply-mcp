@@ -9,6 +9,7 @@ import { registerTools } from '../src/tools.js';
 import { createUsage } from '../src/usage.js';
 import { createCache } from '../src/cache.js';
 import { formatPrintConfig } from '../src/printconfig.js';
+import { loggerFromEnv } from '../src/logger.js';
 import { registerResources } from '../src/resources.js';
 import { registerApplyTools } from '../src/tools-apply.js';
 import * as apply from '../src/apply.js';
@@ -34,7 +35,8 @@ const HELP = `datagokr-apply-mcp v${pkg.version}
   DATAGO_CONFIG   키 저장 파일 (기본 ~/.datago-mcp.json)
   DATAGO_USAGE    호출량 집계 파일 (기본 ~/.datago-usage.json)
   DATAGO_HOME     로그인 세션 폴더 (기본 ~/.datagokr-mcp)
-  DATAGO_DEBUG    1 이면 요청 URL/상태를 stderr 로 출력 (serviceKey 는 ***)`;
+  DATAGO_DEBUG    1 이면 debug 로그를 stderr 로 출력 (serviceKey·쿠키·저장된 키는 ***)
+  DATAGO_LOG_LEVEL   error|warn|info|debug (JSON lines, stderr)  DATAGO_LOG_FORMAT=text 로 평문`;
 
 if (arg === '--version' || arg === '-v') {
   console.log(pkg.version);
@@ -77,7 +79,9 @@ if (arg === 'doctor') {
 
 const server = createServer({ name: 'datagokr-mcp', version: pkg.version });
 // DATAGO_DEBUG=1 이면 요청/응답 상태를 stderr 로 남긴다 (serviceKey 는 가림)
-const logger = process.env.DATAGO_DEBUG ? (m) => console.error(`[datagokr-mcp] ${m}`) : undefined;
+const logger = loggerFromEnv(process.env, {
+  secrets: () => Object.keys(registry.listKeys().keys).map((n) => registry.getKey(n)), // 저장된 키 원문은 로그에서 항상 가림
+});
 registerTools(server, { registry, usage, logger, cache: createCache() });
 registerResources(server, { registry, usage });
 registerApplyTools(server); // 활용신청 자동화(playwright-core 있을 때만)
