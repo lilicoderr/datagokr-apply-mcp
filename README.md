@@ -164,7 +164,7 @@ The flow Claude follows (each tool's description says what to do next):
 3. `find_apply_targets` → `apply_api` — submit one or many applications. On success the **general auth key is read from My page and saved automatically** (never printed in full). If that step fails, run `apply_get_key`.
 4. `call_api` — the saved key is attached for you. Use `my_applications` to check approval.
 
-> Live key retrieval depends on the portal's current My page markup. The extractor is unit-tested against a fixture with a fake key, but has not been verified against a logged-in portal; if it cannot find the key it says so and you can fall back to `save_key`.
+> **Not verified against the live portal yet.** Automatic key retrieval depends on the portal's My page markup and the portal URLs it tries were never checked against a real logged-in page. The extractor is only unit-tested on fixtures with fake keys. A value is saved only if it passes validation (Encoding decodes to Decoding, 40–200 chars, sane charset); otherwise nothing is saved. A different key already saved under the same name is never overwritten (the new one goes to `<name>-2`). **Fallback:** copy the general auth key from My page > Development account on data.go.kr and run `save_key`.
 
 > Auto-apply works for **individual accounts and REST-type, auto-approved APIs**. LINK-type (external) and corporate-only APIs report "could not open the application form". Verified by applying for and getting 11 individual auto-approval APIs approved.
 
