@@ -108,11 +108,12 @@ export function createRegistry(file = defaultConfigPath()) {
     // ── 엔드포인트(별칭) ──
     listEndpoints() { return load().endpoints; },
     getEndpoint(alias) { const e = load().endpoints; return Object.hasOwn(e, alias) ? e[alias] : null; },
-    saveEndpoint(alias, url, note = '', params = {}) {
+    saveEndpoint(alias, url, note = '', params = {}, required = undefined) {
       if (!alias || !url) throw new Error('alias 와 url 이 필요합니다.');
       assertSafeName(alias, '별칭');
       const s = load();
-      s.endpoints[alias] = { url: String(url), note: String(note), params: params || {} };
+      s.endpoints[alias] = { url: String(url), note: String(note), params: params || {},
+        ...(Array.isArray(required) ? { required: required.map(String) } : {}) }; // describe_api 가 저장한 필수 변수(호출 전 검증용)
       save(s);
       return alias;
     },

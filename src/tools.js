@@ -29,24 +29,48 @@ export const MAX_RAW_CHARS = 20000;
 function pretty(obj) { return text(typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2)); }
 
 // endpoint 별칭/직접 url + 키를 해석해 호출 준비물을 만든다 (call_api, fetch_all 공용)
+// describe_api 가 읽은 명세를 기억해 두었다가 call_api 호출 전에 필수 변수 누락을 잡는다 (프로세스 메모리)
+const specCache = new Map();
+const specKey = (u) => String(u || '').split('?')[0].replace(/\/+$/, '');
+
+// 필수 변수 누락/오타 의심 검사. 명세를 모르면 null (검증 생략)
+/** @param {{ required?: string[], ignore?: string[] }} [opts] */
+export function checkParams(url, params, { required: saved, ignore = [] } = {}) {
+  const spec = specCache.get(specKey(url));
+  const required = saved || spec?.required;
+  if (!required) return null;
+  const have = new Set(Object.entries(params).filter(([, v]) => v !== '' && v != null).map(([k]) => k.toLowerCase()));
+  const missing = required.filter((n) => !have.has(n.toLowerCase()) && !ignore.includes(n));
+  const known = spec ? new Set(spec.names.map((n) => n.toLowerCase())) : null;
+  const unknown = known ? Object.keys(params).filter((k) => !known.has(k.toLowerCase()) && !ignore.includes(k)) : [];
+  return { missing, unknown };
+}
+
+const missingMessage = (m) => `필수 요청변수가 빠졌어요: ${m.join(', ')}. 호출하면 resultCode 11 이 나고 트래픽만 소모돼서 호출하지 않았어요. params 에 추가하세요(예시는 describe_api 의 callExample).`;
+const MISSING_HINT = 'Required request parameters are missing; call skipped to save quota. Add them to params, or pass skipValidation:true to call anyway.';
+
 async function resolveCall(args, registry) {
   let url = args.url;
   let params = { ...(args.params || {}) };
+  let ep = null;
   if (args.endpoint) {
-    const ep = registry?.getEndpoint(args.endpoint);
+    ep = registry?.getEndpoint(args.endpoint);
     if (!ep) throw new Error(`저장된 엔드포인트가 없습니다: ${args.endpoint} (list_endpoints 로 확인)`);
     url = ep.url;
     params = { ...ep.params, ...params };
   }
   if (!url) throw new Error('url 또는 endpoint 가 필요합니다.');
   await assertSafeTargetResolved(url);
-  const serviceKey = args.serviceKey || registry?.getKey(args.keyName);
+  // params 안에 serviceKey 를 넣은 경우: 쿼리에 두 번 붙으면 resultCode 30 이 나므로 꺼내서 키로 쓴다
+  let inlineKey;
+  for (const k of Object.keys(params)) if (k.toLowerCase() === 'servicekey') { inlineKey = params[k]; delete params[k]; }
+  const serviceKey = args.serviceKey || inlineKey || registry?.getKey(args.keyName);
   if (!serviceKey) {
     throw new Error(args.keyName
       ? `저장된 키 '${args.keyName}' 가 없습니다. list_keys 로 확인하세요.`
       : '서비스 키가 없습니다. save_key 로 저장하거나 serviceKey 를 넘기세요. (키가 없으면 apply_api 로 활용신청하세요)');
   }
-  return { url, params, serviceKey, keyName: args.keyName || registry?.listKeys().defaultKey || 'direct' };
+  return { url, params, serviceKey, keyName: args.keyName || registry?.listKeys().defaultKey || 'direct', required: ep?.required };
 }
 
 function summarizeResult(r) {
@@ -73,7 +97,11 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
   const callApi = (opts) => callApiRaw({ breaker, ...opts });
   // fetch_all / export_data 공용: pageNo 를 올리며 항목을 모은다
   async function collectPages(args, ctx) {
-    const { url, params, serviceKey, keyName } = await resolveCall(args, registry);
+    const { url, params, serviceKey, keyName, required } = await resolveCall(args, registry);
+    const pre = checkParams(url, params, { required, ignore: ['pageNo', 'numOfRows'] });
+    if (pre?.missing.length && !args.skipValidation) {
+      throw Object.assign(new Error(missingMessage(pre.missing)), { hint: MISSING_HINT });
+    }
     const numOfRows = args.numOfRows || 100;
     const maxPages = Math.min(Math.max(1, args.maxPages || 5), 50);
     const all = [];
@@ -109,11 +137,21 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
         serviceKey: { type: 'string', description: '키를 직접 넘길 때 (저장 키 대신)' },
         itemsOnly: { type: 'boolean', description: 'true 면 원본 대신 목록 항목(items)과 페이징 정보만 간추려 반환 (토큰 절약)' },
         maxItems: { type: 'number', description: 'itemsOnly 일 때 돌려줄 최대 항목 수 (기본 20)' },
+        skipValidation: { type: 'boolean', description: 'true 면 describe_api 로 알게 된 필수 변수 누락 검사를 건너뛰고 그대로 호출(기본 false)' },
         cacheSeconds: { type: 'number', description: '같은 호출을 이 초 동안 캐시(성공 응답만, 트래픽 절약). 기본 0=끔' },
       },
     },
   }, async (args, ctx) => {
-    const { url, params, serviceKey, keyName } = await resolveCall(args, registry);
+    const { url, params, serviceKey, keyName, required } = await resolveCall(args, registry);
+    const pre = checkParams(url, params, { required });
+    if (pre?.missing.length && !args.skipValidation) {
+      return structured({ summary: {
+        ok: false, skipped: true, resultCode: '(미호출)', meaning: '필수 요청변수 누락', message: missingMessage(pre.missing),
+        missing: pre.missing, hint: MISSING_HINT,
+      } });
+    }
+    const warnings = pre?.unknown.length
+      ? [`명세에 없는 변수예요(오타 확인): ${pre.unknown.join(', ')}`] : [];
     const ttlMs = Math.max(0, Number(args.cacheSeconds) || 0) * 1000;
     const ck = cacheKey(url, params, keyName);
     let r = ttlMs && cache ? cache.get(ck) : undefined;
@@ -123,7 +161,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       usage?.record(keyName, { ok: r.ok });
       if (r.ok && ttlMs && cache) cache.set(ck, r, ttlMs);
     }
-    const summary = { ...summarizeResult(r), ...(fromCache ? { cached: true } : {}) };
+    const summary = { ...summarizeResult(r), ...(fromCache ? { cached: true } : {}), ...(warnings.length ? { warnings } : {}) };
     if (args.itemsOnly) {
       const { items, ...page } = extractItems(r.data);
       const max = args.maxItems || 20;
@@ -244,11 +282,14 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
           : 'No request spec parsed (LINK/file data or layout change). Try find_apply_targets or open pageUrl.',
       });
     }
+    if (spec.endpoint) {
+      specCache.set(specKey(spec.endpoint), { required: spec.request.filter((r) => r.required).map((r) => r.name), names: spec.request.map((r) => r.name) });
+    }
     const example = spec.endpoint
       ? { url: spec.endpoint, params: buildExampleParams(spec.request) } : null;
     let saved = null;
     if (a.saveAs && spec.endpoint) {
-      registry.saveEndpoint(a.saveAs, spec.endpoint, spec.title, {});
+      registry.saveEndpoint(a.saveAs, spec.endpoint, spec.title, {}, spec.request.filter((r) => r.required).map((r) => r.name));
       saved = `별칭 '${a.saveAs}' 로 저장됨 → call_api { endpoint: "${a.saveAs}", params: {…필수 파라미터} }`;
     }
     return pretty({
