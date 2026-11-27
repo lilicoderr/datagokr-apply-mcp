@@ -67,3 +67,41 @@ test('parseApplicationItems / countByStatus', () => {
   assert.deepEqual(countByStatus(parsed), { 승인: 1, 신청: 1, 반려: 1, 미확인: 1 });
   assert.deepEqual(parseApplicationItems(), []);
 });
+
+// ── applyInContext: 단계 실패를 성공으로 위장하지 않는다 ──
+function fakeCtx({ failFill = false, failAgree = false, failSubmit = false, dialog = '활용신청이 완료되었습니다' } = {}) {
+  let onDialog;
+  const page = {
+    on: (ev, cb) => { if (ev === 'dialog') onDialog = cb; },
+    goto: async () => {},
+    url: () => 'https://www.data.go.kr/tcs/dss/redirectDevAcountRequestForm.do?publicDataPk=1',
+    fill: async () => { if (failFill) throw new Error('Timeout 8000ms exceeded\n  waiting for selector'); },
+    locator: (sel) => (sel.includes('동의') ? {
+      count: async () => 1, nth: () => ({ click: async () => { if (failAgree) throw new Error('not clickable'); } }),
+    } : { count: async () => 1 }),
+    getByRole: () => ({ first: () => ({ click: async () => {
+      if (failSubmit) throw new Error('button missing');
+      await onDialog?.({ message: () => dialog, accept: async () => {} });
+    } }) }),
+    waitForTimeout: async () => {}, waitForLoadState: async () => {}, close: async () => {},
+  };
+  return { newPage: async () => page };
+}
+
+test('applyInContext: 정상 흐름은 ok', async () => {
+  const { applyInContext } = await import('../src/apply.js');
+  const r = await applyInContext(fakeCtx(), { pk: '1' });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.steps, ['신청 폼 열기', '활용목적 입력', '이용허락 동의', '제출']);
+});
+
+test('applyInContext: 목적 입력/동의/제출 실패는 ok:false + failedStep', async () => {
+  const { applyInContext } = await import('../src/apply.js');
+  for (const [opt, step] of [[{ failFill: true }, '활용목적 입력'], [{ failAgree: true }, '이용허락 동의'], [{ failSubmit: true }, '제출']]) {
+    const r = await applyInContext(fakeCtx(opt), { pk: '1' });
+    assert.equal(r.ok, false, step);
+    assert.equal(r.failedStep, step);
+    assert.ok(!r.steps.includes(step), '실패한 단계가 성공 단계로 기록되면 안 됨');
+    assert.match(r.message, new RegExp(step));
+  }
+});

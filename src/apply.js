@@ -18,8 +18,6 @@ const STATE_FILE = process.env.DATAGO_STATE || path.join(HOME_DIR, 'storage-stat
 const BASE = 'https://www.data.go.kr';
 export const DEFAULT_PURPOSE = '개인 학습 및 서비스 개발용';
 const MYPAGE = `${BASE}/iim/main/mypageMain.do`;
-// 헤드리스 티를 줄이기 위한 일반 Chrome UA (HeadlessChrome 노출 방지).
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 let chromium = null;
 try {
@@ -43,7 +41,7 @@ export function hasSession() {
 }
 
 function contextOptions(withState = true) {
-  const opts = { locale: 'ko-KR', userAgent: UA, viewport: { width: 1280, height: 900 } };
+  const opts = { locale: 'ko-KR', viewport: { width: 1280, height: 900 } };
   if (withState && fs.existsSync(STATE_FILE)) opts.storageState = STATE_FILE;
   return opts;
 }
@@ -152,7 +150,7 @@ export async function applyForApi({ idOrUrl, purpose = DEFAULT_PURPOSE, headless
 }
 
 // 이미 열린 브라우저 컨텍스트에서 신청 1건 수행 (일괄 신청에서 브라우저를 재사용하기 위해 분리)
-async function applyInContext(ctx, { pk, purpose = DEFAULT_PURPOSE }) {
+export async function applyInContext(ctx, { pk, purpose = DEFAULT_PURPOSE }) {
   const steps = [];
   const dialogs = [];
   const page = await ctx.newPage();
@@ -169,18 +167,27 @@ async function applyInContext(ctx, { pk, purpose = DEFAULT_PURPOSE }) {
     }
     steps.push('신청 폼 열기');
 
+    // 각 단계는 실패하면 거기서 멈추고 어느 단계에서 실패했는지 알려 준다(성공한 척 넘어가지 않음).
+    const fail = (stepName, e) => ({
+      ok: false, already: false, failedStep: stepName, steps,
+      message: `${stepName} 단계에서 실패했어요: ${String(e?.message || e).split('\n')[0]}. showBrowser:true 로 확인하세요.`,
+      landedUrl: page.url(),
+    });
+
     // 활용목적 설명(필수)
-    await page.fill('textarea[name="prcusePurps"]', purpose, { timeout: 8000 }).catch(() => {});
+    try { await page.fill('textarea[name="prcusePurps"]', purpose, { timeout: 8000 }); } catch (e) { return fail('활용목적 입력', e); }
     steps.push('활용목적 입력');
 
-    // 이용허락범위 동의 (숨은 input → 라벨 클릭). 상세기능은 기본 전체선택.
-    const agree = page.locator('label:has-text("동의합니다")');
-    const an = await agree.count();
-    for (let i = 0; i < an; i++) await agree.nth(i).click({ timeout: 2000 }).catch(() => {});
+    // 이용허락범위 동의 (숨은 input → 라벨 클릭). 동의 항목이 없는 API 도 있으니 0개는 정상. 상세기능은 기본 전체선택.
+    try {
+      const agree = page.locator('label:has-text("동의합니다")');
+      const an = await agree.count();
+      for (let i = 0; i < an; i++) await agree.nth(i).click({ timeout: 4000 });
+    } catch (e) { return fail('이용허락 동의', e); }
     steps.push('이용허락 동의');
 
     // 제출 (확인 다이얼로그 → accept, 완료 다이얼로그 수신)
-    await page.getByRole('button', { name: /활용\s*신청하기/ }).first().click({ timeout: 10000 }).catch(() => {});
+    try { await page.getByRole('button', { name: /활용\s*신청하기/ }).first().click({ timeout: 10000 }); } catch (e) { return fail('제출', e); }
     await page.waitForTimeout(3500);
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
     steps.push('제출');
