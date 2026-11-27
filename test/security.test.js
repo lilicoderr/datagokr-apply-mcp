@@ -37,3 +37,24 @@ test('DATAGO_ALLOWED_HOSTS restricts to listed domains and subdomains', () => {
   bad('https://evil.example.com/x', env);
   bad('https://data.go.kr.evil.com/x', env);
 });
+
+import { assertSafeTargetResolved, isDefaultAllowedHost } from '../src/security.js';
+
+test('default allowlist: data.go.kr, *.go.kr, *.or.kr only', () => {
+  assert.equal(isDefaultAllowedHost('apis.data.go.kr'), true);
+  assert.equal(isDefaultAllowedHost('openapi.seoul.go.kr'), true);
+  assert.equal(isDefaultAllowedHost('kosis.or.kr'), true);
+  bad('https://evil.example.com/x');
+  bad('https://data.go.kr.evil.com/x');
+  ok('https://evil.example.com/x', { DATAGO_ALLOWED_HOSTS: 'example.com' });
+});
+
+test('DNS resolution: any private address rejects the call', async () => {
+  const pub = async () => [{ address: '203.0.113.5', family: 4 }];
+  const mixed = async () => [{ address: '203.0.113.5', family: 4 }, { address: '10.0.0.8', family: 4 }];
+  const loop6 = async () => [{ address: '::1', family: 6 }];
+  await assert.doesNotReject(assertSafeTargetResolved('https://apis.data.go.kr/x', {}, pub));
+  await assert.rejects(assertSafeTargetResolved('https://apis.data.go.kr/x', {}, mixed), /내부\/로컬/);
+  await assert.rejects(assertSafeTargetResolved('https://apis.data.go.kr/x', {}, loop6), /내부\/로컬/);
+  await assert.doesNotReject(assertSafeTargetResolved('http://127.0.0.1/x', { DATAGO_ALLOW_LOCAL: '1' }, mixed));
+});

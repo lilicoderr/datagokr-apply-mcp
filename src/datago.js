@@ -176,7 +176,7 @@ export async function callApi({
     const t0 = Date.now();
     try {
       logger?.(`→ ${method} ${maskUrl(fullUrl)}`);
-      res = await fetchImpl(fullUrl, { method, body, signal: ctrl.signal });
+      res = await fetchImpl(fullUrl, { method, body, signal: ctrl.signal, redirect: 'error' });
       logger?.(`← HTTP ${res.status} (${Date.now() - t0}ms)`);
     } finally {
       clearTimeout(timer);
