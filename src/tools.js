@@ -6,6 +6,7 @@
 import { callApi, describeResultCode, isEncodedKey, RESULT_CODES } from './datago.js';
 import { extractItems, hasMore } from './items.js';
 import { fetchApiSpec, buildExampleParams, searchDatasets, findApplyTargets } from './portal.js';
+import { cacheKey } from './cache.js';
 
 const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
 
@@ -60,7 +61,7 @@ function summarizeResult(r) {
   return summary;
 }
 
-export function registerTools(server, { registry, fetchImpl, usage, sleep, logger } = {}) {
+export function registerTools(server, { registry, fetchImpl, usage, sleep, logger, cache } = {}) {
   // ── call_api : 핵심 도구 ──
   server.tool('call_api', {
     description: '공공데이터포털 오픈API 를 호출한다. url(또는 저장된 endpoint 별칭)과 params 를 주면 '
@@ -76,13 +77,21 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
         method: { type: 'string', description: 'HTTP 메서드 (기본 GET)' },
         itemsOnly: { type: 'boolean', description: 'true 면 원본 대신 목록 항목(items)과 페이징 정보만 간추려 반환 (토큰 절약)' },
         maxItems: { type: 'number', description: 'itemsOnly 일 때 돌려줄 최대 항목 수 (기본 20)' },
+        cacheSeconds: { type: 'number', description: '같은 호출을 이 초 동안 캐시(성공 응답만, 트래픽 절약). 기본 0=끔' },
       },
     },
   }, async (args) => {
     const { url, params, serviceKey, keyName } = resolveCall(args, registry);
-    const r = await callApi({ url, params, serviceKey, method: args.method || 'GET', fetchImpl, sleep, logger });
-    usage?.record(keyName, { ok: r.ok });
-    const 요약 = summarizeResult(r);
+    const ttlMs = Math.max(0, Number(args.cacheSeconds) || 0) * 1000;
+    const ck = cacheKey(url, params, keyName);
+    let r = ttlMs && cache ? cache.get(ck) : undefined;
+    const fromCache = Boolean(r);
+    if (!r) {
+      r = await callApi({ url, params, serviceKey, method: args.method || 'GET', fetchImpl, sleep, logger });
+      usage?.record(keyName, { ok: r.ok });
+      if (r.ok && ttlMs && cache) cache.set(ck, r, ttlMs);
+    }
+    const 요약 = { ...summarizeResult(r), ...(fromCache ? { 캐시적중: true } : {}) };
     if (args.itemsOnly) {
       const { items, ...page } = extractItems(r.data);
       const max = args.maxItems || 20;

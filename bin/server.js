@@ -7,6 +7,7 @@ import { createServer } from '../src/mcp.js';
 import { createRegistry } from '../src/registry.js';
 import { registerTools } from '../src/tools.js';
 import { createUsage } from '../src/usage.js';
+import { createCache } from '../src/cache.js';
 import { registerApplyTools } from '../src/tools-apply.js';
 import * as apply from '../src/apply.js';
 import { runDoctor, formatReport, exitCode } from '../src/doctor.js';
@@ -50,7 +51,7 @@ if (arg === 'doctor') {
 const server = createServer({ name: 'datagokr-mcp', version: pkg.version });
 // DATAGO_DEBUG=1 이면 요청/응답 상태를 stderr 로 남긴다 (serviceKey 는 가림)
 const logger = process.env.DATAGO_DEBUG ? (m) => console.error(`[datagokr-mcp] ${m}`) : undefined;
-registerTools(server, { registry, usage, logger });
+registerTools(server, { registry, usage, logger, cache: createCache() });
 registerApplyTools(server); // 활용신청 자동화(playwright-core 있을 때만)
 server.tool('doctor', {
   description: '설치·키·네트워크·브라우저·로그인 세션을 점검해 "왜 안 되는지"와 고치는 방법을 알려준다. '
