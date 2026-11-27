@@ -29,16 +29,30 @@ export const RESULT_CODES = {
   '32': '등록되지 않은 IP',
   '33': '서명되지 않은 호출',
   '99': '기타 오류',
+  // 서울 열린데이터광장 계열
+  'INFO-100': '인증키가 유효하지 않음',
+  'INFO-200': '해당하는 데이터가 없음',
+  'ERROR-300': '필수 값 누락',
+  'ERROR-310': '해당하는 서비스를 찾을 수 없음',
+  'ERROR-336': '데이터 요청은 한 번에 최대 1,000건까지',
+  'ERROR-500': '서버 오류',
 };
 
 export function describeResultCode(code) {
   if (code == null) return null;
   const c = String(code).padStart(2, '0');
-  return RESULT_CODES[c] || RESULT_CODES[String(Number(code))] || `알 수 없는 코드(${code})`;
+  return RESULT_CODES[c] || RESULT_CODES[String(code).toUpperCase()] || RESULT_CODES[String(Number(code))] || `알 수 없는 코드(${code})`;
 }
 
 // 코드별 "그래서 뭘 하면 되는지" 안내. AI/사용자가 바로 다음 행동을 알 수 있게 한다.
 export const RESULT_HINTS = {
+  '01': '포털/기관 서버 내부 오류예요. 잠시 후 다시 시도하세요(자동 재시도했어요).',
+  '02': '기관 DB 오류예요. 잠시 후 다시 시도하세요.',
+  '05': '기관 서버가 응답하지 않아요. 잠시 후 다시 시도하세요.',
+  '33': '서명이 필요한 API 예요. 포털 상세 페이지의 호출 방법을 확인하세요.',
+  'INFO-100': '인증키가 유효하지 않아요. 서울 열린데이터광장 등 기관 자체 키가 필요한 API 일 수 있어요(공공데이터포털 키가 아님).',
+  'INFO-200': '조건에 맞는 데이터가 없어요. 범위를 넓혀 보세요.',
+  'ERROR-300': '필수 값이 빠졌어요. describe_api 의 [필수] 항목을 확인하세요.',
   '03': '조건에 맞는 데이터가 없어요. 날짜·지역코드 등 파라미터 범위를 넓혀 보세요.',
   '10': '파라미터 형식이 틀렸어요. 해당 API 의 요청 변수 표(타입/자리수)를 확인하세요.',
   '11': '필수 파라미터가 빠졌어요. 오픈API 상세 페이지의 "필수" 항목을 모두 넣었는지 보세요.',
@@ -54,7 +68,7 @@ export const RESULT_HINTS = {
 export function hintFor(code) {
   if (code == null) return null;
   const c = String(code).padStart(2, '0');
-  return RESULT_HINTS[c] || null;
+  return RESULT_HINTS[c] || RESULT_HINTS[String(code).toUpperCase()] || null;
 }
 
 // 로그/오류 메시지용: serviceKey 값을 가린다 (키가 로그에 남지 않게)
@@ -65,7 +79,7 @@ export function maskUrl(url) {
 // 정상 응답 코드: 00/0000(표준), INFO-000(서울 열린데이터 계열), NORMAL_SERVICE/OK(일부 기관)
 export function isSuccessCode(code) {
   const s = String(code ?? '').trim();
-  return /^0+$/.test(s) || /^INFO-000$/i.test(s) || /^(NORMAL[_ ]SERVICE|OK)\.?$/i.test(s);
+  return /^0+$/.test(s) || s === '200' || /^INFO-000$/i.test(s) || /^(NORMAL[_ ]SERVICE|OK)\.?$/i.test(s);
 }
 
 // 일시 장애라 재시도할 가치가 있는 resultCode (01 앱 에러, 02 DB 에러, 05 타임아웃)
@@ -107,7 +121,13 @@ export function buildQuery(params = {}, serviceKey = undefined, { encodeKey } = 
   }
   for (const [k, v] of Object.entries(params)) {
     if (v === undefined || v === null) continue;
-    parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+    // 배열은 같은 키를 반복, 객체는 JSON 문자열(‘[object Object]’ 방지). 한글·특수문자는 UTF-8 퍼센트 인코딩
+    const values = Array.isArray(v) ? v : [v];
+    for (const one of values) {
+      if (one === undefined || one === null) continue;
+      const str = typeof one === 'object' ? JSON.stringify(one) : String(one);
+      parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(str)}`);
+    }
   }
   return parts.join('&');
 }
@@ -116,6 +136,20 @@ export function buildUrl(base, params, serviceKey, opts) {
   const q = buildQuery(params, serviceKey, opts);
   if (!q) return base;
   return base + (base.includes('?') ? '&' : '?') + q;
+}
+
+// 코드 없이 문구만 오는 게이트웨이 오류(평문/XML returnAuthMsg) → 표준 resultCode
+/** @type {[RegExp, string][]} */
+const TEXT_CODES = [
+  [/SERVICE[_ ]KEY[_ ]IS[_ ]NOT[_ ]REGISTERED/i, '30'], [/LIMITED[_ ]NUMBER[_ ]OF[_ ]SERVICE[_ ]REQUESTS[_ ]EXCEEDS/i, '22'],
+  [/SERVICE[_ ]ACCESS[_ ]DENIED/i, '20'], [/UNREGISTERED[_ ]IP/i, '32'], [/DEADLINE[_ ]HAS[_ ]EXPIRED/i, '31'],
+  [/TEMPORARILY[_ ]DISABLE[D_ ]THE[_ ]SERVICEKEY/i, '21'], [/NO[_ ]OPENAPI[_ ]SERVICE/i, '12'],
+  [/INVALID[_ ]REQUEST[_ ]PARAMETER/i, '10'], [/NO[_ ]MANDATORY[_ ]REQUEST[_ ]PARAMETERS/i, '11'],
+];
+export function codeFromText(t) {
+  const s = String(t ?? '');
+  for (const [re, code] of TEXT_CODES) if (re.test(s)) return code;
+  return null;
 }
 
 // 응답 본문 해석 (JSON 또는 XML) → { kind, data, resultCode, resultMsg }
@@ -129,12 +163,18 @@ export function interpret(bodyText, contentType = '') {
   if (data === null && (text.startsWith('<') || /xml/i.test(contentType))) {
     try { data = parseXml(text); kind = 'xml'; } catch { /* 아래 */ }
   }
-  if (data === null) return { kind: 'text', data: text, resultCode: null, resultMsg: null };
+  // 게이트웨이/오류 HTML 페이지는 XML 이 아니다 (200 이어도 성공으로 보지 않음)
+  if (data && kind === 'xml' && typeof data === 'object' && 'html' in data) { data = null; kind = 'text'; }
+  if (data === null) {
+    const fromText = codeFromText(text);
+    return { kind: 'text', data: text, resultCode: fromText, resultMsg: fromText ? text.slice(0, 200) : null,
+      html: /^<(?:!doctype html|html)[\s>]/i.test(text) };
+  }
 
   // 공통 위치들에서 코드/메시지 추출
   const resultCode = findFirst(data, ['resultCode', 'returnReasonCode', 'errorCode', 'code', 'CODE']);
-  const resultMsg = findFirst(data, ['resultMsg', 'returnAuthMsg', 'errMsg', 'errorMsg', 'message', 'MSG']);
-  return { kind, data, resultCode, resultMsg };
+  const resultMsg = findFirst(data, ['resultMsg', 'returnAuthMsg', 'errMsg', 'errorMsg', 'message', 'MSG', 'MESSAGE']);
+  return { kind, data, resultCode: resultCode ?? codeFromText(resultMsg), resultMsg };
 }
 
 const DEFAULT_FETCH = (url, init) => globalThis.fetch(url, init);
@@ -184,14 +224,18 @@ export async function callApi({
     }
     const contentType = res.headers?.get?.('content-type') || '';
     const text = await res.text();
-    const { kind, data, resultCode, resultMsg } = interpret(text, contentType);
+    const { kind, data, resultCode, resultMsg, html } = interpret(text, contentType);
+    // 200 이어도 본문이 HTML(게이트웨이/점검 페이지)이면 성공이 아니다
+    const hint = hintFor(resultCode)
+      || (html ? '응답이 JSON/XML 이 아니라 HTML 이에요. 기관 서버 점검·차단 페이지일 수 있어요. URL 과 잠시 후 재시도를 확인하세요.' : null)
+      || (res.status >= 400 && kind === 'text' ? `HTTP ${res.status} 오류예요. URL 과 파라미터를 확인하세요.` : null);
     return {
       httpStatus: res.status,
-      ok: res.ok && (resultCode == null || isSuccessCode(resultCode)),
+      ok: res.ok && !html && (resultCode == null || isSuccessCode(resultCode)),
       resultCode,
       resultMsg,
       codeMeaning: describeResultCode(resultCode),
-      hint: hintFor(resultCode),
+      hint,
       kind,
       data,
       url: fullUrl,
