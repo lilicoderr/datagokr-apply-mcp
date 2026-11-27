@@ -224,12 +224,13 @@ export function normalizeIds(list, { max = 50 } = {}) {
 }
 
 // 여러 오픈API 에 순차 활용신청. 브라우저 1개를 재사용하고, 로그인이 없으면 즉시 중단한다.
-export async function applyForApis(idList, { purpose = DEFAULT_PURPOSE, delayMs = 1200, headless = true, max = 50 } = {}) {
+export async function applyForApis(idList, { purpose = DEFAULT_PURPOSE, delayMs = 1200, headless = true, max = 50, onProgress } = {}) {
   const { ids, invalid, duplicates, truncated } = normalizeIds(idList, { max });
   const results = [];
   let done = 0; let already = 0; let failed = 0; let needLogin = false;
   if (ids.length) {
     await withContext({ headless }, async (ctx) => {
+      let n = 0;
       for (const pk of ids) {
         try {
           const r = await applyInContext(ctx, { pk, purpose });
@@ -240,6 +241,8 @@ export async function applyForApis(idList, { purpose = DEFAULT_PURPOSE, delayMs 
           results.push({ idOrUrl: pk, ok: false, error: e.message });
           failed += 1;
         }
+        n += 1;
+        try { onProgress?.(n, ids.length, pk); } catch { /* 진행률 콜백 오류는 무시 */ }
         if (delayMs) await new Promise((res) => setTimeout(res, delayMs));
       }
     });

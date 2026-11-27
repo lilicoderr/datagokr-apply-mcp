@@ -7,12 +7,13 @@
 //   3) apply_api 로 원하는 오픈API 활용신청 (여러 개면 반복 호출)
 //   4) my_applications 로 신청/승인 확인, 발급된 키를 save_key 로 저장 → call_api 로 사용
 
-import * as apply from './apply.js';
+import * as applyDefault from './apply.js';
 import { annotateTools } from './annotations.js';
 
 function text(t) { return { content: [{ type: 'text', text: t }] }; }
 
-export function registerApplyTools(server) {
+export function registerApplyTools(server, { apply: applyImpl } = {}) {
+  const apply = applyImpl || applyDefault;
   if (!apply.isAvailable()) {
     server.tool('apply_setup', {
       description: '공공데이터 활용신청 자동화를 켜는 방법. (브라우저 자동화 미설치 상태) '
@@ -85,8 +86,11 @@ export function registerApplyTools(server) {
         purpose: { type: 'string', description: '활용목적(공통). 기본 "개인 학습 및 서비스 개발용"' },
       },
     },
-  }, async (a) => {
-    const r = await apply.applyForApis(a.ids || [], { purpose: a.purpose });
+  }, async (a, ctx) => {
+    const r = await apply.applyForApis(a.ids || [], {
+      purpose: a.purpose,
+      onProgress: (i, total, id) => ctx?.progress?.(i, total, `활용신청 ${i}/${total}: ${id}`),
+    });
     const lines = [`요청 ${r.total}건 → ✅완료 ${r.done} · ↺이미 ${r.already} · ⚠️실패 ${r.failed}`];
     for (const x of r.results) {
       lines.push(`  ${x.ok ? '✅' : x.already ? '↺' : '⚠️'} ${x.idOrUrl}${x.error ? ` (${x.error})` : ''}`);

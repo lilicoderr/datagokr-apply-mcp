@@ -54,7 +54,8 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
   }
 
   // 하나의 JSON-RPC 메시지를 처리. 응답 객체를 돌려주고, 알림(notification)이면 null.
-  async function handle(msg) {
+  //   opts.notify(obj): 서버→클라이언트 알림(진행률 등)을 내보내는 함수 (전송 계층이 제공, 없으면 알림은 버림)
+  async function handle(msg, opts = {}) {
     if (!msg || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') {
       return msg?.id !== undefined ? rpcError(msg.id ?? null, -32600, 'Invalid Request') : null;
     }
@@ -89,7 +90,8 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
           const entry = tools.get(toolName);
           if (!entry) return reply(rpcError(msg.id, -32602, `알 수 없는 도구: ${toolName}`));
           try {
-            const out = await entry.handler(msg.params?.arguments ?? {});
+            const ctx = makeContext(msg, opts);
+            const out = await entry.handler(msg.params?.arguments ?? {}, ctx);
             return reply(rpcResult(msg.id, toToolResult(out)));
           } catch (err) {
             // 도구 실행 오류는 프로토콜 오류가 아니라 content.isError 로 전달 (MCP 권장)
@@ -131,6 +133,26 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
     }
   }
 
+  // 도구 핸들러에 넘기는 두 번째 인자. progress(현재, 전체?, 메시지?) 는 클라이언트가
+  // _meta.progressToken 을 보냈을 때만 notifications/progress 를 내보내고, 값은 단조 증가만 허용한다.
+  function makeContext(msg, opts) {
+    const token = msg.params?._meta?.progressToken;
+    let last = -Infinity;
+    return {
+      requestId: msg.id,
+      progress(progress, total, message) {
+        if (token === undefined || token === null || !opts.notify) return false;
+        if (!(progress > last)) return false;
+        last = progress;
+        const params = { progressToken: token, progress };
+        if (total !== undefined && total !== null) params.total = total;
+        if (message) params.message = message;
+        try { opts.notify({ jsonrpc: '2.0', method: 'notifications/progress', params }); } catch { /* 전송 실패는 도구를 막지 않음 */ }
+        return true;
+      },
+    };
+  }
+
   // 핸들러 반환값을 MCP tools/call 결과 형태로 정규화
   function toToolResult(out) {
     if (out && typeof out === 'object' && Array.isArray(out.content)) return out; // 이미 형식에 맞음
@@ -156,7 +178,7 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
         let msg;
         try { msg = JSON.parse(line); } catch { write(output, rpcError(null, -32700, 'Parse error')); continue; }
         pending++;
-        handle(msg)
+        handle(msg, { notify: (n) => write(output, n) })
           .then((res) => { if (res) write(output, res); })
           .catch(() => { /* handle 은 내부에서 이미 처리 */ })
           .finally(() => { pending--; maybeExit(); });

@@ -72,7 +72,7 @@ function summarizeResult(r) {
 export function registerTools(server, { registry, fetchImpl, usage, sleep, logger, cache, exportDir, breaker = createBreaker() } = {}) {
   const callApi = (opts) => callApiRaw({ breaker, ...opts });
   // fetch_all / export_data 공용: pageNo 를 올리며 항목을 모은다
-  async function collectPages(args) {
+  async function collectPages(args, ctx) {
     const { url, params, serviceKey, keyName } = resolveCall(args, registry);
     const numOfRows = args.numOfRows || 100;
     const maxPages = Math.min(Math.max(1, args.maxPages || 5), 50);
@@ -84,6 +84,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       last = await callApi({ url, params: { ...params, pageNo, numOfRows }, serviceKey, fetchImpl, sleep, logger });
       usage?.record(keyName, { ok: last.ok });
       pages++;
+      ctx?.progress?.(pages, maxPages, `${pages}/${maxPages} 페이지 (${all.length + (last.ok ? extractItems(last.data).items.length : 0)}건)`);
       if (!last.ok) break;
       const ex = extractItems(last.data);
       all.push(...ex.items);
@@ -152,8 +153,8 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
         maxItems: { type: 'number', description: '응답에 담을 최대 항목 수 (기본 200)' },
       },
     },
-  }, async (args) => {
-    const { all, totalCount, pages, last } = await collectPages(args);
+  }, async (args, ctx) => {
+    const { all, totalCount, pages, last } = await collectPages(args, ctx);
     const max = args.maxItems || 200;
     return pretty({
       요약: summarizeResult(last),
@@ -179,8 +180,8 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
         filename: { type: 'string', description: '파일 이름(확장자 제외, 폴더 지정 불가)' },
       },
     },
-  }, async (args) => {
-    const { all, totalCount, pages, last } = await collectPages(args);
+  }, async (args, ctx) => {
+    const { all, totalCount, pages, last } = await collectPages(args, ctx);
     if (!all.length) {
       return text(`저장할 항목이 없어요. ${JSON.stringify(summarizeResult(last))}`);
     }
