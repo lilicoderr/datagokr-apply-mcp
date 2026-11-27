@@ -41,7 +41,7 @@ export function safeFileName(name, ext) {
   const base = String(name || 'export').replace(/(?<=[^.])\.[A-Za-z0-9]+$/, '')
     .replace(/[^\p{L}\p{N}._-]+/gu, '_').replace(/^[._]+/, '').replace(/[._ ]+$/, '').slice(0, 80) || 'export';
   // Windows 예약 장치 이름(CON, NUL, COM1 ...)은 파일이 아니라 장치로 열린다
-  const safe = /^(con|prn|aux|nul|com\d|lpt\d)$/i.test(base.split('.')[0]) ? `_${base}` : base;
+  const safe = /^(con|prn|aux|nul|(com|lpt)[\d¹²³])$/i.test(base.split('.')[0]) ? `_${base}` : base;
   return `${safe}.${ext}`;
 }
 

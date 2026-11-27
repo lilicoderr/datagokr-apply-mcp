@@ -22,7 +22,7 @@ function full() {
 test('모든 도구에 annotations 가 있고 tools/list 로 노출된다', async () => {
   const s = full();
   const res = await s.handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
-  assert.ok(res.result.tools.length >= 20);
+  assert.ok(res.result.tools.length >= 17); // playwright-core 없으면 apply_* 대신 apply_setup
   for (const t of res.result.tools) {
     assert.ok(t.annotations, `${t.name} 에 annotations 없음`);
     assert.equal(typeof t.annotations.readOnlyHint, 'boolean', t.name);

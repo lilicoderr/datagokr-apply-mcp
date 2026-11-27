@@ -70,7 +70,9 @@ async function resolveCall(args, registry) {
       ? `저장된 키 '${args.keyName}' 가 없습니다. list_keys 로 확인하세요.`
       : '서비스 키가 없습니다. save_key 로 저장하거나 serviceKey 를 넘기세요. (키가 없으면 apply_api 로 활용신청하세요)');
   }
-  return { url, params, serviceKey, keyName: args.keyName || registry?.listKeys().defaultKey || 'direct', required: ep?.required };
+  // 직접 넘긴 키는 저장된 기본 키의 캐시/호출량으로 섞지 않는다
+  const keyName = args.serviceKey || inlineKey ? 'direct' : args.keyName || registry?.listKeys().defaultKey || 'direct';
+  return { url, params, serviceKey, keyName, required: ep?.required };
 }
 
 function summarizeResult(r) {
@@ -197,6 +199,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
         numOfRows: { type: 'number', description: '페이지당 항목 수 (기본 100)' },
         maxPages: { type: 'number', description: '최대 페이지 수 (기본 5, 상한 50)' },
         maxItems: { type: 'number', description: '응답에 담을 최대 항목 수 (기본 200)' },
+        skipValidation: { type: 'boolean', description: 'true 면 필수 변수 누락 검사를 건너뜀 (기본 false)' },
       },
     },
   }, async (args, ctx) => {
@@ -207,7 +210,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       pages,
       totalCount,
       count: all.length,
-      truncated: all.length > max || (totalCount != null && all.length < totalCount),
+      truncated: all.length > max || !last.ok || (totalCount != null && all.length < totalCount),
       items: all.slice(0, max),
     });
   });
@@ -224,6 +227,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
         numOfRows: { type: 'number' }, maxPages: { type: 'number', description: '최대 페이지 (기본 5, 상한 50)' },
         format: { type: 'string', description: "'csv'(기본) 또는 'json'" },
         filename: { type: 'string', description: '파일 이름(확장자 제외, 폴더 지정 불가)' },
+        skipValidation: { type: 'boolean', description: 'true 면 필수 변수 누락 검사를 건너뜀 (기본 false)' },
       },
     },
   }, async (args, ctx) => {
@@ -236,7 +240,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
     const w = writeExport(all, { format: args.format || 'csv', name: args.filename || 'export', dir: exportDir });
     return structured({
       summary: summarizeResult(last), savedTo: w.file, rows: w.rows, bytes: w.bytes, pages, totalCount,
-      truncated: totalCount != null && all.length < totalCount,
+      truncated: !last.ok || (totalCount != null && all.length < totalCount),
     });
   });
 
