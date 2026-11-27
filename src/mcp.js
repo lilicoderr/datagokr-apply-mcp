@@ -14,6 +14,8 @@ const DEFAULT_PROTOCOL = '2024-11-05';
 
 export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
   const tools = new Map(); // name -> { def, handler }
+  const resources = new Map(); // uri -> { def, read }
+  const prompts = new Map(); // name -> { def, build }
   let initialized = false;
 
   function tool(toolName, def, handler) {
@@ -24,6 +26,22 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
         inputSchema: def.inputSchema || { type: 'object', properties: {} },
       },
       handler,
+    });
+    return api;
+  }
+
+  function resource(uri, def, read) {
+    resources.set(uri, {
+      def: { uri, name: def.name || uri, description: def.description || '', mimeType: def.mimeType || 'text/plain' },
+      read,
+    });
+    return api;
+  }
+
+  function prompt(promptName, def, build) {
+    prompts.set(promptName, {
+      def: { name: promptName, description: def.description || '', arguments: def.arguments || [] },
+      build,
     });
     return api;
   }
@@ -51,7 +69,11 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
           initialized = true;
           return reply(rpcResult(msg.id, {
             protocolVersion,
-            capabilities: { tools: { listChanged: false } },
+            capabilities: {
+              tools: { listChanged: false },
+              ...(resources.size ? { resources: { listChanged: false, subscribe: false } } : {}),
+              ...(prompts.size ? { prompts: { listChanged: false } } : {}),
+            },
             serverInfo: { name, version },
           }));
         }
@@ -76,6 +98,30 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
               isError: true,
             }));
           }
+        }
+        case 'resources/list':
+          return reply(rpcResult(msg.id, { resources: [...resources.values()].map((r) => r.def) }));
+        case 'resources/read': {
+          const uri = msg.params?.uri;
+          const entry = resources.get(uri);
+          if (!entry) return reply(rpcError(msg.id, -32002, `알 수 없는 리소스: ${uri}`));
+          const body = await entry.read();
+          const text = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+          return reply(rpcResult(msg.id, { contents: [{ uri, mimeType: entry.def.mimeType, text }] }));
+        }
+        case 'prompts/list':
+          return reply(rpcResult(msg.id, { prompts: [...prompts.values()].map((p) => p.def) }));
+        case 'prompts/get': {
+          const entry = prompts.get(msg.params?.name);
+          if (!entry) return reply(rpcError(msg.id, -32602, `알 수 없는 프롬프트: ${msg.params?.name}`));
+          const args = msg.params?.arguments ?? {};
+          for (const a of entry.def.arguments) {
+            if (a.required && !args[a.name]) return reply(rpcError(msg.id, -32602, `필수 인자 누락: ${a.name}`));
+          }
+          const built = await entry.build(args);
+          const messages = typeof built === 'string'
+            ? [{ role: 'user', content: { type: 'text', text: built } }] : built;
+          return reply(rpcResult(msg.id, { description: entry.def.description, messages }));
         }
         default:
           return reply(rpcError(msg.id, -32601, `지원하지 않는 메서드: ${msg.method}`));
@@ -124,6 +170,6 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
     output.write(JSON.stringify(obj) + '\n');
   }
 
-  const api = { tool, handle, listen, get initialized() { return initialized; }, tools };
+  const api = { tool, resource, prompt, handle, listen, get initialized() { return initialized; }, tools };
   return api;
 }

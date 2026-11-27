@@ -10,7 +10,7 @@ import { cacheKey } from './cache.js';
 import { writeExport } from './export.js';
 import { toTypeScript } from './hints.js';
 
-const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
+export const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
 
 1. https://www.data.go.kr 에 로그인한다.
 2. 원하는 오픈API 상세 페이지에서 [활용신청] 을 누른다.
