@@ -43,6 +43,10 @@ export function rankDatasets(query, items, limit = 5) {
     .slice(0, limit);
 }
 
+/**
+ * @param {any} query
+ * @param {import('./types.js').Options} [options]
+ */
 export async function recommendDatasets(query, { limit = 5, fetchImpl } = {}) {
   const variants = queryVariants(query);
   const seen = new Map();

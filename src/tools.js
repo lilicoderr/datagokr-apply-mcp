@@ -72,6 +72,10 @@ function summarizeResult(r) {
   return summary;
 }
 
+/**
+ * @param {any} server
+ * @param {import('./types.js').Options} [options]
+ */
 export function registerTools(server, { registry, fetchImpl, usage, sleep, logger, cache, exportDir, breaker = createBreaker(), watchStore } = {}) {
   const callApi = (opts) => callApiRaw({ breaker, ...opts });
   // fetch_all / export_data 공용: pageNo 를 올리며 항목을 모은다

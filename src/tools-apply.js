@@ -12,6 +12,10 @@ import { annotateTools } from './annotations.js';
 
 function text(t) { return { content: [{ type: 'text', text: t }] }; }
 
+/**
+ * @param {any} server
+ * @param {import('./types.js').Options} [options]
+ */
 export function registerApplyTools(server, { apply: applyImpl } = {}) {
   const apply = applyImpl || applyDefault;
   if (!apply.isAvailable()) {

@@ -142,6 +142,9 @@ export function extractDataPk(idOrUrl) {
 
 // 개인회원 기준 개발계정 활용신청 자동 제출. (자동승인 API 는 바로 발급)
 // 검증된 플로우: 신청 폼으로 바로 이동 → 활용목적 입력 → 이용허락 동의 → 제출 → 완료 다이얼로그 확인.
+/**
+ * @param {import('./types.js').Options} [options]
+ */
 export async function applyForApi({ idOrUrl, purpose = DEFAULT_PURPOSE, headless = true } = {}) {
   const pk = extractDataPk(idOrUrl);
   if (!pk) throw new Error('데이터 id(숫자) 또는 data.go.kr URL 을 넣어주세요.');
@@ -224,6 +227,10 @@ export function normalizeIds(list, { max = 50 } = {}) {
 }
 
 // 여러 오픈API 에 순차 활용신청. 브라우저 1개를 재사용하고, 로그인이 없으면 즉시 중단한다.
+/**
+ * @param {any} idList
+ * @param {import('./types.js').Options} [options]
+ */
 export async function applyForApis(idList, { purpose = DEFAULT_PURPOSE, delayMs = 1200, headless = true, max = 50, onProgress, signal } = {}) {
   const { ids, invalid, duplicates, truncated } = normalizeIds(idList, { max });
   const results = [];
@@ -265,7 +272,7 @@ export async function listMyApplications({ headless = true } = {}) {
       const total = m ? Number(m[1]) : null;
       // [승인]/[신청]/[반려] 로 시작하거나 데이터명 패턴인 항목
       const names = [...document.querySelectorAll('a, td, .title, .tit, strong')]
-        .map((e) => e.innerText.trim())
+        .map((e) => /** @type {HTMLElement} */ (e).innerText.trim())
         .filter((t) => /^\[(승인|신청|반려|중지)\]/.test(t) || (/_|서비스|조회|정보/.test(t) && t.length > 6 && t.length < 60));
       return { total, items: [...new Set(names)].slice(0, 30) };
     });

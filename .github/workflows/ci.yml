@@ -17,6 +17,8 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Syntax check
         run: node --check bin/server.js && node --check src/tools.js
+      - name: Typecheck (tsc --noEmit, checkJs)
+        run: npm ci && npm run typecheck
       - name: Run tests
         run: node --test
       - name: Self-check (install guide verification)

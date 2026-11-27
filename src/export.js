@@ -45,6 +45,10 @@ export function safeFileName(name, ext) {
   return `${safe}.${ext}`;
 }
 
+/**
+ * @param {any} items
+ * @param {import('./types.js').Options} [options]
+ */
 export function writeExport(items, { format = 'csv', name, dir = defaultExportDir() } = {}) {
   if (!['csv', 'json'].includes(format)) throw new Error("format 은 'csv' 또는 'json' 입니다.");
   fs.mkdirSync(dir, { recursive: true });

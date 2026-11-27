@@ -71,6 +71,9 @@ export function isSuccessCode(code) {
 // 일시 장애라 재시도할 가치가 있는 resultCode (01 앱 에러, 02 DB 에러, 05 타임아웃)
 export const RETRYABLE_CODES = new Set(['01', '02', '05']);
 
+/**
+ * @param {import('./types.js').Options} [options]
+ */
 export function isRetryable({ httpStatus, resultCode, error } = {}) {
   if (error) return true; // 네트워크 오류/타임아웃
   if (httpStatus === 429 || (httpStatus >= 500 && httpStatus <= 599)) return true;
@@ -90,7 +93,12 @@ export function isEncodedKey(key) {
 }
 
 // 쿼리스트링 구성. serviceKey 는 형태에 따라 인코딩 여부를 달리한다.
-export function buildQuery(params = {}, serviceKey, { encodeKey } = {}) {
+/**
+ * @param {any} [params]
+ * @param {any} [params]
+ * @param {any} [serviceKey]
+ */
+export function buildQuery(params = {}, serviceKey = undefined, { encodeKey } = {}) {
   const parts = [];
   if (serviceKey) {
     const key = String(serviceKey);
@@ -129,7 +137,7 @@ export function interpret(bodyText, contentType = '') {
   return { kind, data, resultCode, resultMsg };
 }
 
-const DEFAULT_FETCH = (...a) => globalThis.fetch(...a);
+const DEFAULT_FETCH = (url, init) => globalThis.fetch(url, init);
 const DEFAULT_SLEEP = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 네트워크 오류를 사람이 읽을 메시지로
@@ -146,7 +154,7 @@ export function describeNetworkError(e, timeoutMs) {
 /**
  * 오픈API 호출. 서비스키 이중 인코딩이면 반대 형태로 1회 자동 재시도하고,
  * 일시 장애(네트워크/5xx/429/resultCode 01·02·05)는 지수 백오프로 재시도한다.
- * @returns {{ok, httpStatus, resultCode, resultMsg, codeMeaning, hint, kind, data, url, usedEncodedKey, retried, attempts}}
+ * @returns {Promise<any>} { ok, httpStatus, resultCode, resultMsg, codeMeaning, hint, kind, data, url, usedEncodedKey, retried, attempts }
  */
 export async function callApi({
   url, params = {}, serviceKey, method = 'GET', body, timeoutMs = 15000, fetchImpl = DEFAULT_FETCH,
@@ -208,7 +216,7 @@ export async function callApi({
         if (i < retries) await sleep(backoffMs(i, retryDelayMs));
       }
     }
-    const err = new Error(describeNetworkError(lastErr, timeoutMs));
+    const err = /** @type {any} */ (new Error(describeNetworkError(lastErr, timeoutMs)));
     err.cause = lastErr;
     err.attempts = attempts;
     throw err;

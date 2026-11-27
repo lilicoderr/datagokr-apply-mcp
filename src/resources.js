@@ -3,6 +3,10 @@
 
 import { APPLY_GUIDE } from './tools.js';
 
+/**
+ * @param {any} server
+ * @param {import('./types.js').Options} [options]
+ */
 export function registerResources(server, { registry, usage } = {}) {
   server.resource('datago://keys', {
     name: '저장된 서비스 키 (마스킹)',

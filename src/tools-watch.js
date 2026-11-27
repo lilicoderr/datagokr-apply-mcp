@@ -5,6 +5,10 @@ import { createWatchStore } from './watch.js';
 const out = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, null, 2) }] });
 const MAX_IDS = 20;
 
+/**
+ * @param {any} server
+ * @param {import('./types.js').Options} [options]
+ */
 export function registerWatchTools(server, { fetchImpl, store = createWatchStore() } = {}) {
   server.tool('dataset_watch', {
     description: '데이터셋(오픈API) 명세가 바뀌었는지 감시한다. action: check(기본; ids 를 지금 상태와 저장된 스냅샷으로 비교 — 처음이면 기준선 저장, '

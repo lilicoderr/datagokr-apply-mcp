@@ -15,6 +15,10 @@ export function desktopConfigPath(platform = process.platform, env = process.env
   return path.join(env.XDG_CONFIG_HOME || path.join(home, '.config'), 'Claude', 'claude_desktop_config.json');
 }
 
+/**
+ * @param {any} client
+ * @param {import('./types.js').Options} [options]
+ */
 export function buildSnippet(client, { script, platform, env, home } = {}) {
   if (!script) throw new Error('script 경로가 필요합니다.');
   const e = entry(script);

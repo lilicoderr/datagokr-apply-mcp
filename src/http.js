@@ -28,6 +28,10 @@ function originAllowed(origin) {
   try { return LOCAL.has(new URL(origin).hostname.replace(/^\[|\]$/g, '')); } catch { return false; }
 }
 
+/**
+ * @param {any} server
+ * @param {import('./types.js').Options} [options]
+ */
 export function createHttpHandler(server, { token, path = '/mcp' } = {}) {
   return async (req, res) => {
     try {
@@ -70,6 +74,10 @@ export function assertBindable(host, token) {
   }
 }
 
+/**
+ * @param {any} server
+ * @param {import('./types.js').Options} [options]
+ */
 export function startHttp(server, { host = '127.0.0.1', port = 3000, token = '' } = {}) {
   assertBindable(host, token);
   const srv = http.createServer(createHttpHandler(server, { token }));

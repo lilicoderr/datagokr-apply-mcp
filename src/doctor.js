@@ -11,11 +11,14 @@ export function nodeMajor(version = process.versions.node) {
   return Number(String(version).split('.')[0]);
 }
 
+/**
+ * @param {import('./types.js').Options} [options]
+ */
 export async function runDoctor({
   registry,
   usage,
   apply,
-  fetchImpl = (...a) => globalThis.fetch(...a),
+  fetchImpl = (url, init) => globalThis.fetch(url, init),
   nodeVersion = process.versions.node,
   platform = process.platform,
   netUrl = 'https://apis.data.go.kr',
@@ -103,6 +106,10 @@ export function exitCode(results) {
 
 // doctor --fix: 안전하게 자동 수정할 수 있는 항목만 고친다 (키·세션은 건드리지 않는다).
 //   fixable: config(설정 파일 생성), perm(chmod 600), chromium(브라우저 설치)
+/**
+ * @param {any} results
+ * @param {import('./types.js').Options} [options]
+ */
 export async function applyFixes(results, { registry, runCommand, platform = process.platform } = {}) {
   const actions = [];
   const done = (id, ok, msg) => actions.push({ id, ok, msg });

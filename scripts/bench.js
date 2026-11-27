@@ -43,5 +43,5 @@ if (process.argv.includes('--json')) {
   console.log(JSON.stringify({ node: process.version, results }, null, 2));
 } else {
   console.log(`node ${process.version}\n`);
-  for (const r of results) console.log(`${r.name.padEnd(40)} median ${r.medianMs.toFixed(3).padStart(8)} ms   p95 ${r.p95Ms.toFixed(3).padStart(8)} ms   (${r.runs} runs)`);
+  for (const r of results) console.log(`${String(r.name).padEnd(40)} median ${r.medianMs.toFixed(3).padStart(8)} ms   p95 ${r.p95Ms.toFixed(3).padStart(8)} ms   (${r.runs} runs)`);
 }

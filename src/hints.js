@@ -20,6 +20,10 @@ function key(name) {
   return /^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name);
 }
 
+/**
+ * @param {any} spec
+ * @param {import('./types.js').Options} [options]
+ */
 export function toTypeScript(spec, { name } = {}) {
   const base = pascal(name || spec.title || 'Api');
   const lines = [];

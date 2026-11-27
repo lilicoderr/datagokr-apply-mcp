@@ -121,7 +121,11 @@ export function parseSearchResults(html) {
   return { total, items };
 }
 
-export async function searchDatasets(query, { page = 1, perPage = 10, fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = 15000 } = {}) {
+/**
+ * @param {any} query
+ * @param {import('./types.js').Options} [options]
+ */
+export async function searchDatasets(query, { page = 1, perPage = 10, fetchImpl = (url, init) => globalThis.fetch(url, init), timeoutMs = 15000 } = {}) {
   if (!String(query || '').trim()) throw new Error('검색어(query)가 필요합니다.');
   const url = `${BASE}/tcs/dss/selectDataSetList.do?dType=API&keyword=${encodeURIComponent(query)}&currentPage=${page}&perPage=${perPage}`;
   const ctrl = new AbortController();
@@ -160,6 +164,10 @@ async function mapLimit(items, limit, fn) {
  * 키워드로 "개발단계 자동승인 REST" API 만 골라낸다 — 브라우저/로그인 없이 공개 페이지만 사용.
  * 검색 결과(최대 maxPages 페이지)의 각 상세 페이지를 4개씩 병렬로 읽어 필터링한다.
  */
+/**
+ * @param {any} keyword
+ * @param {import('./types.js').Options} [options]
+ */
 export async function findApplyTargets(keyword, { limit = 10, maxPages = 3, concurrency = 4, fetchImpl } = {}) {
   const targets = [];
   const seen = new Set();
@@ -184,7 +192,7 @@ export async function findApplyTargets(keyword, { limit = 10, maxPages = 3, conc
   return { keyword, scanned, count: targets.length, targets };
 }
 
-export async function fetchApiSpec(id, { fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = 15000 } = {}) {
+export async function fetchApiSpec(id, { fetchImpl = (url, init) => globalThis.fetch(url, init), timeoutMs = 15000 } = {}) {
   const pk = String(id || '').match(/\d{5,}/)?.[0];
   if (!pk) throw new Error('데이터 id(숫자, 예 15012690)를 넣어주세요.');
   const url = `${BASE}/data/${pk}/openapi.do`;

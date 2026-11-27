@@ -23,6 +23,11 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
   let initialized = false;
   const inflight = new Map(); // 요청 id -> AbortController (notifications/cancelled 용)
 
+  /**
+   * @param {string} toolName
+   * @param {{description?: string, inputSchema?: object, outputSchema?: object, annotations?: import('./types.js').ToolAnnotations}} def
+   * @param {(args: any, ctx: import('./types.js').ToolContext) => Promise<string | object | import('./types.js').ToolResult> | string | object} handler
+   */
   function tool(toolName, def, handler) {
     tools.set(toolName, {
       def: {
