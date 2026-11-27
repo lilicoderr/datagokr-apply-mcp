@@ -13,7 +13,7 @@
 
 **English** · [한국어](README.ko.md)
 
-[Quick start](#quick-start) · [Tools](#tools-25) · [Auto-apply](#auto-apply-for-api-keys) · [Security](#security) · [FAQ](#faq) · [Contributing](CONTRIBUTING.md)
+[Quick start](#quick-start) · [Tools](#tools-25) · [Recipes](docs/recipes.md) · [Auto-apply](#auto-apply-for-api-keys) · [Security](#security) · [FAQ](#faq) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
