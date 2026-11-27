@@ -7,6 +7,7 @@ import { callApi, describeResultCode, isEncodedKey, RESULT_CODES } from './datag
 import { extractItems, hasMore } from './items.js';
 import { fetchApiSpec, buildExampleParams, searchDatasets, findApplyTargets } from './portal.js';
 import { cacheKey } from './cache.js';
+import { writeExport } from './export.js';
 
 const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
 
@@ -61,7 +62,29 @@ function summarizeResult(r) {
   return summary;
 }
 
-export function registerTools(server, { registry, fetchImpl, usage, sleep, logger, cache } = {}) {
+export function registerTools(server, { registry, fetchImpl, usage, sleep, logger, cache, exportDir } = {}) {
+  // fetch_all / export_data 공용: pageNo 를 올리며 항목을 모은다
+  async function collectPages(args) {
+    const { url, params, serviceKey, keyName } = resolveCall(args, registry);
+    const numOfRows = args.numOfRows || 100;
+    const maxPages = Math.min(Math.max(1, args.maxPages || 5), 50);
+    const all = [];
+    let totalCount = null;
+    let pages = 0;
+    let last;
+    for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
+      last = await callApi({ url, params: { ...params, pageNo, numOfRows }, serviceKey, fetchImpl, sleep, logger });
+      usage?.record(keyName, { ok: last.ok });
+      pages++;
+      if (!last.ok) break;
+      const ex = extractItems(last.data);
+      all.push(...ex.items);
+      totalCount = ex.totalCount ?? totalCount;
+      if (!hasMore({ ...ex, pageNo, numOfRows })) break;
+    }
+    return { all, totalCount, pages, last };
+  }
+
   // ── call_api : 핵심 도구 ──
   server.tool('call_api', {
     description: '공공데이터포털 오픈API 를 호출한다. url(또는 저장된 endpoint 별칭)과 params 를 주면 '
@@ -122,23 +145,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       },
     },
   }, async (args) => {
-    const { url, params, serviceKey, keyName } = resolveCall(args, registry);
-    const numOfRows = args.numOfRows || 100;
-    const maxPages = Math.min(Math.max(1, args.maxPages || 5), 50);
-    const all = [];
-    let totalCount = null;
-    let pages = 0;
-    let last;
-    for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
-      last = await callApi({ url, params: { ...params, pageNo, numOfRows }, serviceKey, fetchImpl, sleep, logger });
-      usage?.record(keyName, { ok: last.ok });
-      pages++;
-      if (!last.ok) break;
-      const ex = extractItems(last.data);
-      all.push(...ex.items);
-      totalCount = ex.totalCount ?? totalCount;
-      if (!hasMore({ ...ex, pageNo, numOfRows })) break;
-    }
+    const { all, totalCount, pages, last } = await collectPages(args);
     const max = args.maxItems || 200;
     return pretty({
       요약: summarizeResult(last),
@@ -147,6 +154,32 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       가져온항목수: all.length,
       잘림: all.length > max || (totalCount != null && all.length < totalCount),
       항목: all.slice(0, max),
+    });
+  });
+
+  // ── export_data : 전체 결과를 CSV/JSON 파일로 저장 (AI 컨텍스트를 쓰지 않고 대량 데이터 확보) ──
+  server.tool('export_data', {
+    description: 'fetch_all 과 같이 페이지를 순회해 항목을 모은 뒤 CSV(엑셀용 BOM)/JSON 파일로 저장하고 경로만 돌려준다. '
+      + '수백~수천 건을 AI 컨텍스트에 싣지 않고 받아 가공할 때 쓴다. 파일은 내보내기 폴더(DATAGO_EXPORT_DIR, 기본 ~/datago-exports)에만 생성된다.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' }, endpoint: { type: 'string' }, params: { type: 'object' },
+        keyName: { type: 'string' }, serviceKey: { type: 'string' },
+        numOfRows: { type: 'number' }, maxPages: { type: 'number', description: '최대 페이지 (기본 5, 상한 50)' },
+        format: { type: 'string', description: "'csv'(기본) 또는 'json'" },
+        filename: { type: 'string', description: '파일 이름(확장자 제외, 폴더 지정 불가)' },
+      },
+    },
+  }, async (args) => {
+    const { all, totalCount, pages, last } = await collectPages(args);
+    if (!all.length) {
+      return text(`저장할 항목이 없어요. ${JSON.stringify(summarizeResult(last))}`);
+    }
+    const w = writeExport(all, { format: args.format || 'csv', name: args.filename || 'export', dir: exportDir });
+    return pretty({
+      요약: summarizeResult(last), 저장됨: w.file, 행수: w.rows, 바이트: w.bytes, 조회페이지: pages, totalCount,
+      잘림: totalCount != null && all.length < totalCount,
     });
   });
 
