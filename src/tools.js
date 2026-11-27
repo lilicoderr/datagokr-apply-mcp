@@ -222,12 +222,21 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       + '(추측으로 호출하다 resultCode 10/11/12 를 겪지 않도록). 로그인 불필요.',
     inputSchema: { type: 'object', required: ['idOrUrl'], properties: {
       idOrUrl: { type: 'string', description: '데이터 id (예 "15012690") 또는 data.go.kr/data/<id>/... URL' },
+      operation: { type: 'string', description: '상세기능 id 또는 이름 일부(예 "공휴일"). 생략하면 첫 기능 기준. 기능마다 요청주소/변수가 다르니 operations 를 보고 고른다' },
       saveAs: { type: 'string', description: '주면 이 요청주소를 해당 별칭으로 저장한다 (이후 call_api { endpoint: 별칭 } 로 호출)' },
     } },
   }, async (a) => {
-    const spec = await fetchApiSpec(a.idOrUrl, { fetchImpl });
+    const spec = await fetchApiSpec(a.idOrUrl, { fetchImpl, operation: a.operation });
     if (!spec.found) {
-      return text(`명세를 읽지 못했어요(LINK형/파일데이터이거나 포털 구조가 바뀌었을 수 있어요). 직접 확인: ${spec.pageUrl}`);
+      const notRest = spec.reason === 'not_rest';
+      return structured({
+        found: false, reason: spec.reason || 'no_spec', pageUrl: spec.pageUrl,
+        message: notRest
+          ? `이 데이터는 REST 오픈API 가 아니에요(유형: ${spec.apiType}). 포털 페이지에서 직접 확인하세요: ${spec.pageUrl}`
+          : `명세를 읽지 못했어요. LINK형·파일데이터이거나 포털 구조가 바뀌었을 수 있어요. 포털 페이지에서 직접 확인하세요: ${spec.pageUrl}`,
+        hint: notRest ? 'Not a REST OpenAPI; call_api does not apply. Open pageUrl.'
+          : 'No request spec parsed (LINK/file data or layout change). Try find_apply_targets or open pageUrl.',
+      });
     }
     const example = spec.endpoint
       ? { url: spec.endpoint, params: buildExampleParams(spec.request) } : null;
@@ -241,7 +250,8 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       title: spec.title, provider: spec.provider, format: spec.format, traffic: spec.traffic,
       endpoint: spec.endpoint, serviceUrl: spec.serviceUrl,
       operations: spec.operations.map((o) => o.name),
-      ...(spec.operations.length > 1 ? { note: '요청주소는 첫 상세기능 기준이에요. 다른 기능은 서비스URL 뒤에 오퍼레이션명을 붙이며, 포털 페이지에서 확인하세요.' } : {}),
+      ...(spec.operation ? { operation: spec.operation.name } : {}),
+      ...(spec.operations.length > 1 && !spec.operation ? { note: '요청주소는 첫 상세기능 기준이에요. 다른 기능은 operation 인자(예: operation: "' + spec.operations[1].name + '")로 다시 조회하세요.' } : {}),
       request: spec.request.map((r) => `${r.required ? '[필수]' : '[선택]'} ${r.name}(${r.ko}) 예:${r.sample || '-'} — ${r.desc}`),
       response: spec.response.map((r) => `${r.name}(${r.ko})`),
       callExample: example,

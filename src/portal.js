@@ -136,17 +136,10 @@ export function parseSearchResults(html) {
  * @param {any} query
  * @param {import('./types.js').Options} [options]
  */
-export async function searchDatasets(query, { page = 1, perPage = 10, fetchImpl = (url, init) => globalThis.fetch(url, init), timeoutMs = 15000 } = {}) {
-  if (!String(query || '').trim()) throw new Error('검색어(query)가 필요합니다.');
+export async function searchDatasets(query, { page = 1, perPage = 10, ...net } = {}) {
+  if (!String(query || '').trim()) throw portalError('검색어(query)가 필요합니다.', 'query is required.');
   const url = `${BASE}/tcs/dss/selectDataSetList.do?dType=API&keyword=${encodeURIComponent(query)}&currentPage=${page}&perPage=${perPage}`;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  let res;
-  try {
-    res = await fetchImpl(url, { headers: { 'User-Agent': 'Mozilla/5.0 datagokr-apply-mcp' }, signal: ctrl.signal });
-  } finally { clearTimeout(timer); }
-  if (!res.ok) throw new Error(`검색 페이지를 가져오지 못했어요(HTTP ${res.status}).`);
-  return { url, ...parseSearchResults(await res.text()) };
+  return { url, ...parseSearchResults(await fetchPage(url, { ...net, what: '검색 페이지' })) };
 }
 
 // 개인회원이 개발단계에서 바로(자동승인) 쓸 수 있는 REST API 인가?
@@ -203,17 +196,69 @@ export async function findApplyTargets(keyword, { limit = 10, maxPages = 3, conc
   return { keyword, scanned, count: targets.length, targets };
 }
 
-export async function fetchApiSpec(id, { fetchImpl = (url, init) => globalThis.fetch(url, init), timeoutMs = 15000 } = {}) {
-  const pk = String(id || '').match(/\d{5,}/)?.[0];
-  if (!pk) throw new Error('데이터 id(숫자, 예 15012690)를 넣어주세요.');
-  const url = `${BASE}/data/${pk}/openapi.do`;
+// 사람이 읽을 한국어 메시지 + 영어 hint 를 가진 오류
+export function portalError(message, hint) {
+  return Object.assign(new Error(message), { hint });
+}
+
+// 포털 페이지 1건을 가져온다. 네트워크/HTTP 실패를 모두 한국어 message + 영어 hint 로 바꾼다.
+async function fetchPage(url, { fetchImpl = (u, init) => globalThis.fetch(u, init), timeoutMs = 15000, init = /** @type {any} */ ({}), what = '페이지' } = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let res;
   try {
-    res = await fetchImpl(url, { headers: { 'User-Agent': 'Mozilla/5.0 datagokr-apply-mcp' }, signal: ctrl.signal });
+    res = await fetchImpl(url, {
+      ...init, headers: { 'User-Agent': 'Mozilla/5.0 datagokr-apply-mcp', ...(init.headers || {}) }, signal: ctrl.signal,
+    });
+  } catch (e) {
+    const timeout = e?.name === 'AbortError';
+    throw portalError(
+      timeout ? `${what} 응답이 ${Math.round(timeoutMs / 1000)}초 안에 오지 않았어요. 잠시 후 다시 시도하세요.`
+        : `${what}를 가져오지 못했어요(네트워크 오류: ${e?.message || e}). 인터넷 연결을 확인하세요.`,
+      timeout ? 'Portal request timed out; retry later.' : 'Network error reaching data.go.kr; check connectivity.');
   } finally { clearTimeout(timer); }
-  if (!res.ok) throw new Error(`상세 페이지를 가져오지 못했어요(HTTP ${res.status}). id 가 맞는지 확인하세요: ${url}`);
-  const spec = parseOpenApiPage(await res.text());
-  return { id: pk, pageUrl: url, ...spec };
+  if (res.status === 404) {
+    throw portalError(`${what}가 없어요(HTTP 404). id 가 맞는지 확인하세요: ${url}`, 'Not found: check the data id (use search_datasets).');
+  }
+  if (!res.ok) {
+    throw portalError(`${what}를 가져오지 못했어요(HTTP ${res.status}). 잠시 후 다시 시도하세요: ${url}`,
+      `Portal returned HTTP ${res.status}; retry later or open the URL manually.`);
+  }
+  return res.text();
+}
+
+const pkOf = (id) => String(id || '').match(/\d{5,}/)?.[0];
+
+/**
+ * 상세 페이지 명세. operation(오퍼레이션 id 또는 이름 일부)을 주면 포털 페이지가 쓰는 공개 조회 경로
+ * (/tcs/dss/selectApiDetailFunction.do)로 그 기능의 요청주소/변수/응답을 가져온다.
+ * @param {any} id
+ * @param {import('./types.js').Options} [options]
+ */
+export async function fetchApiSpec(id, { operation, ...net } = {}) {
+  const pk = pkOf(id);
+  if (!pk) throw portalError('데이터 id(숫자, 예 15012690)를 넣어주세요.', 'Pass a numeric data id such as 15012690.');
+  const url = `${BASE}/data/${pk}/openapi.do`;
+  /** @type {any} */
+  const spec = { id: pk, pageUrl: url, ...parseOpenApiPage(await fetchPage(url, { ...net, what: '상세 페이지' })) };
+  if (operation == null || operation === '') return spec;
+  const q = String(operation).trim();
+  const op = spec.operations.find((o) => o.id === q) || spec.operations.find((o) => o.name.includes(q));
+  if (!op) {
+    throw portalError(`상세기능 '${q}' 을(를) 찾지 못했어요. 가능한 기능: ${spec.operations.map((o) => o.name).join(', ') || '(단일 기능)'}`,
+      'Unknown operation; pick one of operations[] from describe_api.');
+  }
+  if (!spec.detailPk) {
+    throw portalError('기능별 명세 조회에 필요한 값을 페이지에서 찾지 못했어요. 포털 페이지에서 직접 확인하세요: ' + url,
+      'Portal layout changed: detail pk missing; open pageUrl manually.');
+  }
+  const body = new URLSearchParams({ oprtinSeqNo: op.id, publicDataDetailPk: spec.detailPk, publicDataPk: pk }).toString();
+  const frag = parseOpenApiPage(await fetchPage(`${BASE}/tcs/dss/selectApiDetailFunction.do`, {
+    ...net, what: '기능별 명세',
+    init: { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded', Referer: url } },
+  }));
+  const merged = { ...spec, operation: op, endpoint: frag.endpoint ?? spec.endpoint, request: frag.request, response: frag.response };
+  if (frag.traffic) merged.traffic = frag.traffic;
+  merged.found = Boolean(merged.endpoint || merged.request.length);
+  return merged;
 }

@@ -51,3 +51,42 @@ test('빈 검색 결과 / 404 에러 페이지는 found=false 로 안전하게 �
   assert.equal(s.found, false);
   assert.equal(s.reason, 'no_spec');
 });
+
+// ── fetchApiSpec: 오퍼레이션 / 오류 UX (네트워크는 fixture 로 대체) ──
+import { fetchApiSpec, searchDatasets } from '../src/portal.js';
+
+const reply = (body, status = 200) => ({ ok: status < 400, status, text: async () => body });
+
+test('fetchApiSpec: operation 지정 시 기능별 요청주소/변수를 POST 로 가져온다', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({ url, method: init.method || 'GET', body: String(init.body || '') });
+    return reply(url.includes('selectApiDetailFunction') ? read('operation-fragment.html') : read('openapi-spcde.html'));
+  };
+  const s = await fetchApiSpec('15012690', { operation: '공휴일', fetchImpl });
+  assert.equal(calls[1].method, 'POST');
+  assert.match(calls[1].body, /oprtinSeqNo=24868/);
+  assert.match(calls[1].body, /publicDataPk=15012690/);
+  assert.equal(s.operation.name, '공휴일 정보 조회');
+  assert.match(s.endpoint, /getRestDeInfo$/);
+  assert.ok(s.request.length > 0);
+});
+
+test('fetchApiSpec: 없는 operation 은 가능한 기능 목록을 안내', async () => {
+  const fetchImpl = async () => reply(read('openapi-spcde.html'));
+  await assert.rejects(fetchApiSpec('15012690', { operation: '없는기능', fetchImpl }),
+    (e) => /공휴일 정보 조회/.test(e.message) && /operation/i.test(e.hint));
+});
+
+test('오류 UX: 404/5xx/네트워크/타임아웃 모두 한국어 message + 영어 hint', async () => {
+  await assert.rejects(fetchApiSpec('99999999', { fetchImpl: async () => reply('x', 404) }),
+    (e) => /HTTP 404/.test(e.message) && /Not found/.test(e.hint));
+  await assert.rejects(fetchApiSpec('15012690', { fetchImpl: async () => reply('x', 503) }),
+    (e) => /HTTP 503/.test(e.message) && /503/.test(e.hint));
+  await assert.rejects(searchDatasets('날씨', { fetchImpl: async () => { throw new Error('ECONNRESET'); } }),
+    (e) => /네트워크/.test(e.message) && /Network/.test(e.hint));
+  const abortErr = Object.assign(new Error('aborted'), { name: 'AbortError' });
+  await assert.rejects(searchDatasets('날씨', { fetchImpl: async () => { throw abortErr; } }),
+    (e) => /초 안에/.test(e.message) && /timed out/.test(e.hint));
+  await assert.rejects(fetchApiSpec('abc', {}), (e) => /id/.test(e.message) && Boolean(e.hint));
+});
