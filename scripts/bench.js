@@ -4,7 +4,6 @@ import { performance } from 'node:perf_hooks';
 import { parseXml } from '../src/xml.js';
 import { extractItems } from '../src/items.js';
 import { flatten } from '../src/export.js';
-import { inferSchema } from '../src/schema.js';
 import { redactString } from '../src/logger.js';
 import { buildUrl } from '../src/datago.js';
 
@@ -19,7 +18,6 @@ const cases = [
   [`parseXml (${N_ROWS} items, ${(xml.length / 1024).toFixed(0)} KB)`, () => parseXml(xml)],
   ['extractItems (JSON)', () => extractItems(json)],
   ['flatten x1000 rows', () => rows.map((r) => flatten(r))],
-  ['inferSchema (1000 rows)', () => inferSchema(rows)],
   ['redactString (1.3 KB line)', () => redactString(logLine)],
   ['buildUrl', () => buildUrl('https://apis.data.go.kr/x', { pageNo: 1, numOfRows: 100, q: '한글' }, 'K%2Bkey==')],
 ];
