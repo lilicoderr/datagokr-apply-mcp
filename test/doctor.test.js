@@ -74,7 +74,7 @@ test('doctor: 호출량 80% 이상이면 경고', async () => {
   assert.equal(byId(rs, 'usage').status, 'warn');
 });
 
-test('formatReport: 요약 문구', () => {
+test('formatReport: summary 문구', () => {
   assert.match(formatReport([{ id: 'a', status: 'ok', title: 'A', detail: 'd' }]), /모두 정상/);
   assert.match(formatReport([{ id: 'a', status: 'fail', title: 'A', detail: 'd', fix: 'do x' }]), /→ do x[\s\S]*문제 1건/);
 });

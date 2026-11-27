@@ -1,3 +1,4 @@
+process.env.DATAGO_ALLOW_LOCAL = '1';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
@@ -90,9 +91,9 @@ test('fetch_all: 페이지를 순회해 합치고 사용량 기록', async () =>
   registerTools(s, { registry: reg, fetchImpl, usage, sleep: async () => {} });
   const res = await callTool(s, 'fetch_all', { url: 'http://x/api', numOfRows: 2 });
   const out = JSON.parse(res.result.content[0].text);
-  assert.equal(out.조회페이지, 3);
-  assert.equal(out.가져온항목수, 5);
-  assert.equal(out.잘림, false);
+  assert.equal(out.pages, 3);
+  assert.equal(out.count, 5);
+  assert.equal(out.truncated, false);
   assert.equal(fetchImpl.calls.length, 3);
   assert.equal(usage.summary().total, 3);
 });
@@ -104,8 +105,8 @@ test('fetch_all: maxPages 로 상한, 잘림 표시', async () => {
   reg.saveKey('k', 'plainkey0123456789');
   registerTools(s, { registry: reg, fetchImpl, sleep: async () => {} });
   const out = JSON.parse((await callTool(s, 'fetch_all', { url: 'http://x', numOfRows: 2, maxPages: 2 })).result.content[0].text);
-  assert.equal(out.조회페이지, 2);
-  assert.equal(out.잘림, true);
+  assert.equal(out.pages, 2);
+  assert.equal(out.truncated, true);
 });
 
 test('call_api itemsOnly: 항목만 간추려 반환', async () => {
@@ -115,10 +116,10 @@ test('call_api itemsOnly: 항목만 간추려 반환', async () => {
   reg.saveKey('k', 'plainkey0123456789');
   registerTools(s, { registry: reg, fetchImpl });
   const out = JSON.parse((await callTool(s, 'call_api', { url: 'http://x', itemsOnly: true, maxItems: 2 })).result.content[0].text);
-  assert.equal(out.항목수, 3);
-  assert.equal(out.항목.length, 2);
-  assert.equal(out.생략됨, 1);
-  assert.equal(out.페이징.totalCount, 3);
+  assert.equal(out.count, 3);
+  assert.equal(out.items.length, 2);
+  assert.equal(out.omitted, 1);
+  assert.equal(out.paging.totalCount, 3);
 });
 
 test('quota_status 도구', async () => {
@@ -159,6 +160,6 @@ test('describe_api saveAs: 요청주소를 별칭으로 저장', async () => {
   const reg = createRegistry(tmp('c.json'));
   registerTools(s, { registry: reg, fetchImpl: async () => ({ ok: true, status: 200, text: async () => html }) });
   const res = await callTool(s, 'describe_api', { idOrUrl: '15012690', saveAs: '특일' });
-  assert.match(JSON.parse(res.result.content[0].text).저장, /특일/);
+  assert.match(JSON.parse(res.result.content[0].text).saved, /특일/);
   assert.match(reg.getEndpoint('특일').url, /SpcdeInfoService\/getAnniversaryInfo/);
 });

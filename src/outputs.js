@@ -8,26 +8,40 @@ export function structured(obj) {
 const obj = (properties, required = []) => ({ type: 'object', properties, ...(required.length ? { required } : {}) });
 const SUMMARY = obj({
   ok: { type: 'boolean' }, httpStatus: { type: 'number' }, resultCode: { type: ['string', 'number'] },
-  의미: { type: 'string' }, 응답형식: { type: 'string' },
+  meaning: { type: 'string' }, message: { type: ['string', 'null'] }, format: { type: 'string' },
+  keyEncoding: { type: 'string' }, retried: { type: 'boolean' }, attempts: { type: 'number' },
+  hint: { type: 'string' }, cached: { type: 'boolean' },
 }, ['ok']);
+const KEYINFO = obj({
+  ok: { type: 'boolean' }, saved: { type: 'boolean' }, keyName: { type: 'string' },
+  masked: { type: 'string' }, needLogin: { type: 'boolean' }, message: { type: 'string' },
+}, ['ok', 'message']);
 
 export const OUTPUT_SCHEMAS = {
   call_api: obj({
-    요약: SUMMARY, 데이터: {}, 페이징: { type: 'object' }, 항목수: { type: 'number' },
-    항목: { type: 'array' }, 생략됨: { type: 'number' }, 잘림: { type: 'boolean' },
-  }, ['요약']),
+    summary: SUMMARY, data: {}, paging: { type: 'object' }, count: { type: 'number' },
+    items: { type: 'array' }, omitted: { type: 'number' }, truncated: { type: 'boolean' },
+  }, ['summary']),
   fetch_all: obj({
-    요약: SUMMARY, 조회페이지: { type: 'number' }, totalCount: { type: ['number', 'null'] },
-    가져온항목수: { type: 'number' }, 잘림: { type: 'boolean' }, 항목: { type: 'array' },
-  }, ['요약', '조회페이지', '가져온항목수', '항목']),
+    summary: SUMMARY, pages: { type: 'number' }, totalCount: { type: ['number', 'null'] },
+    count: { type: 'number' }, truncated: { type: 'boolean' }, items: { type: 'array' },
+  }, ['summary', 'pages', 'count', 'items']),
   export_data: obj({
-    요약: SUMMARY, 저장됨: { type: 'string' }, 행수: { type: 'number' }, 바이트: { type: 'number' },
-    조회페이지: { type: 'number' }, totalCount: { type: ['number', 'null'] }, 잘림: { type: 'boolean' },
-  }, ['요약']),
+    summary: SUMMARY, savedTo: { type: ['string', 'null'] }, rows: { type: 'number' }, bytes: { type: 'number' },
+    pages: { type: 'number' }, totalCount: { type: ['number', 'null'] }, truncated: { type: 'boolean' },
+    message: { type: 'string' },
+  }, ['summary', 'rows']),
   quota_status: obj({
     day: { type: 'string' }, limit: { type: 'number' }, total: { type: 'number' }, byKey: { type: 'object' },
+    message: { type: 'string' },
   }, ['day', 'limit', 'total', 'byKey']),
   list_keys: obj({ defaultKey: { type: ['string', 'null'] }, keys: { type: 'object' } }, ['keys']),
+  apply_api: obj({
+    ok: { type: 'boolean' }, total: { type: 'number' }, done: { type: 'number' }, already: { type: 'number' },
+    failed: { type: 'number' }, needLogin: { type: 'boolean' }, results: { type: 'array' },
+    key: { anyOf: [KEYINFO, { type: 'null' }] }, message: { type: 'string' },
+  }, ['ok', 'message']),
+  apply_get_key: KEYINFO,
 };
 
 export function attachOutputSchemas(server) {

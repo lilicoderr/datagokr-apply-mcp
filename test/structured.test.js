@@ -1,3 +1,4 @@
+process.env.DATAGO_ALLOW_LOCAL = '1';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
@@ -34,7 +35,7 @@ const call = (s, name, args) => s.handle({ jsonrpc: '2.0', id: 1, method: 'tools
 
 test('outputSchema 가 tools/list 에 노출된다', async () => {
   const res = await setup().handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
-  for (const n of Object.keys(OUTPUT_SCHEMAS)) {
+  for (const n of Object.keys(OUTPUT_SCHEMAS).filter((k) => !k.startsWith('apply_'))) {
     assert.ok(res.result.tools.find((t) => t.name === n)?.outputSchema, n);
   }
 });
@@ -63,11 +64,27 @@ test('큰 응답이 잘려도 structuredContent 는 스키마를 만족한다', 
   const r = (await call(setup({ fetchImpl: big }), 'call_api', { url: 'https://apis.data.go.kr/x', serviceKey: 'k' })).result;
   assert.match(r.content[0].text, /생략/);
   validate(OUTPUT_SCHEMAS.call_api, r.structuredContent);
-  assert.equal(r.structuredContent.잘림, true);
+  assert.equal(r.structuredContent.truncated, true);
 });
 
 test('structured() 헬퍼', () => {
   const r = structured({ a: 1 });
   assert.deepEqual(r.structuredContent, { a: 1 });
   assert.equal(r.content[0].type, 'text');
+});
+
+test('export_data 빈 결과도 structuredContent 를 준다', async () => {
+  const empty = async () => ({ ok: true, status: 200, headers: { get: () => 'application/json' },
+    text: async () => JSON.stringify({ response: { header: { resultCode: '00' }, body: { totalCount: 0, items: '' } } }) });
+  const s = setup({ fetchImpl: empty });
+  const r = (await call(s, 'export_data', { url: 'https://apis.data.go.kr/x', serviceKey: 'k' })).result;
+  assert.ok(r.structuredContent, JSON.stringify(r));
+  assert.equal(r.structuredContent.rows, 0);
+  validate(OUTPUT_SCHEMAS.export_data, r.structuredContent, 'export_data');
+});
+
+test('call_api 는 method 인자를 받지 않는다', async () => {
+  const res = await setup().handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+  const t = res.result.tools.find((x) => x.name === 'call_api');
+  assert.equal(t.inputSchema.properties.method, undefined);
 });

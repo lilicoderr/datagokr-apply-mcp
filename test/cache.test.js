@@ -1,3 +1,4 @@
+process.env.DATAGO_ALLOW_LOCAL = '1';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCache, cacheKey } from '../src/cache.js';
@@ -77,7 +78,7 @@ test('call_api cacheSeconds: 두 번째 호출은 네트워크·사용량 없이
   await call(s, { url: 'http://x/api', params: { q: 1 }, cacheSeconds: 60 });
   const second = JSON.parse((await call(s, { url: 'http://x/api', params: { q: 1 }, cacheSeconds: 60 })).result.content[0].text);
   assert.equal(fetchImpl.n, 1);
-  assert.equal(second.요약.캐시적중, true);
+  assert.equal(second.summary.cached, true);
   assert.equal(usage.summary().total, 1);
 });
 

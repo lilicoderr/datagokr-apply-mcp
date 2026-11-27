@@ -1,3 +1,4 @@
+process.env.DATAGO_ALLOW_LOCAL = '1';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../src/mcp.js';

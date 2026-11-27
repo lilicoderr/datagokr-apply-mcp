@@ -20,7 +20,7 @@ export const TOOL_ANNOTATIONS = {
   set_default_key: W, save_endpoint: { ...W, dest: true }, remove_endpoint: { ro: false, dest: true, idem: true, open: false },
   apply_login: { ro: false, dest: false, idem: true, open: true },
   apply_api: { ro: false, dest: false, idem: true, open: true }, // 이미 신청된 건은 건너뜀
-  apply_apis: { ro: false, dest: false, idem: true, open: true },
+  apply_get_key: { ro: false, dest: true, idem: true, open: true }, // 같은 이름 키를 갱신
   my_applications: { ro: true, open: true },
 };
 

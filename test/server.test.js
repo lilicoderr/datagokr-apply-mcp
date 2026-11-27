@@ -1,3 +1,4 @@
+process.env.DATAGO_ALLOW_LOCAL = '1';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
@@ -90,8 +91,8 @@ test('registerTools: 전체 도구 등록 + call_api 가 저장 키 사용', asy
   await s.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'save_key', arguments: { name: 'k', key: 'plain+key/0123456789ab' } } });
   const res = await s.handle({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'call_api', arguments: { url: 'http://api/x', params: { pageNo: 1 } } } });
   const out = JSON.parse(res.result.content[0].text);
-  assert.equal(out.요약.ok, true);
-  assert.equal(out.요약.resultCode, '00');
+  assert.equal(out.summary.ok, true);
+  assert.equal(out.summary.resultCode, '00');
   assert.match(calls[0], /serviceKey=plain%2Bkey%2F0123456789ab/); // 디코딩 키가 인코딩돼 전송
 });
 

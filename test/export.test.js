@@ -1,3 +1,4 @@
+process.env.DATAGO_ALLOW_LOCAL = '1';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
@@ -72,10 +73,10 @@ test('export_data: 페이지를 모아 CSV 파일로 저장하고 경로만 반�
   const res = await s.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call',
     params: { name: 'export_data', arguments: { url: 'http://x/api', numOfRows: 2, filename: '목록' } } });
   const out = JSON.parse(res.result.content[0].text);
-  assert.equal(out.행수, 3);
-  assert.equal(out.잘림, false);
-  assert.equal(path.basename(out.저장됨), '목록.csv');
-  assert.match(fs.readFileSync(out.저장됨, 'utf8'), /n\r\n가\r\n나\r\n다/);
+  assert.equal(out.rows, 3);
+  assert.equal(out.truncated, false);
+  assert.equal(path.basename(out.savedTo), '목록.csv');
+  assert.match(fs.readFileSync(out.savedTo, 'utf8'), /n\r\n가\r\n나\r\n다/);
 });
 
 test('export_data: 항목이 없으면 파일을 만들지 않음', async () => {

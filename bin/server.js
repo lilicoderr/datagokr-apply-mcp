@@ -85,7 +85,7 @@ const logger = loggerFromEnv(process.env, {
 });
 registerTools(server, { registry, usage, logger, cache: createCache() });
 registerResources(server, { registry, usage });
-registerApplyTools(server); // 활용신청 자동화(playwright-core 있을 때만)
+registerApplyTools(server, { registry }); // 활용신청 자동화(playwright-core 있을 때만)
 server.tool('doctor', {
   description: '설치·키·네트워크·브라우저·로그인 세션을 점검해 "왜 안 되는지"와 고치는 방법을 알려준다. '
     + '호출이 실패하거나 apply_* 가 안 보일 때 먼저 실행하라.',

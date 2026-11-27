@@ -8,7 +8,7 @@ import { extractItems, hasMore } from './items.js';
 import { fetchApiSpec, buildExampleParams, searchDatasets, findApplyTargets } from './portal.js';
 import { cacheKey } from './cache.js';
 import { writeExport } from './export.js';
-import { assertSafeTarget } from './security.js';
+import { assertSafeTargetResolved } from './security.js';
 import { createBreaker } from './breaker.js';
 import { structured } from './outputs.js';
 import { annotateTools } from './annotations.js';
@@ -29,7 +29,7 @@ export const MAX_RAW_CHARS = 20000;
 function pretty(obj) { return text(typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2)); }
 
 // endpoint 별칭/직접 url + 키를 해석해 호출 준비물을 만든다 (call_api, fetch_all 공용)
-function resolveCall(args, registry) {
+async function resolveCall(args, registry) {
   let url = args.url;
   let params = { ...(args.params || {}) };
   if (args.endpoint) {
@@ -39,7 +39,7 @@ function resolveCall(args, registry) {
     params = { ...ep.params, ...params };
   }
   if (!url) throw new Error('url 또는 endpoint 가 필요합니다.');
-  assertSafeTarget(url);
+  await assertSafeTargetResolved(url);
   const serviceKey = args.serviceKey || registry?.getKey(args.keyName);
   if (!serviceKey) {
     throw new Error(args.keyName
@@ -54,14 +54,14 @@ function summarizeResult(r) {
     ok: r.ok,
     httpStatus: r.httpStatus,
     resultCode: r.resultCode ?? '(없음)',
-    의미: r.codeMeaning || (r.ok ? '정상' : '알 수 없음'),
-    resultMsg: r.resultMsg ?? null,
-    응답형식: r.kind,
-    키인코딩: r.usedEncodedKey ? 'Encoding' : 'Decoding',
-    재시도됨: Boolean(r.retried),
-    시도횟수: r.attempts ?? 1,
+    meaning: r.codeMeaning || (r.ok ? '정상' : '알 수 없음'),
+    message: r.resultMsg ?? null,
+    format: r.kind,
+    keyEncoding: r.usedEncodedKey ? 'Encoding' : 'Decoding',
+    retried: Boolean(r.retried),
+    attempts: r.attempts ?? 1,
   };
-  if (!r.ok && r.hint) summary.도움말 = r.hint;
+  if (!r.ok && r.hint) summary.hint = r.hint;
   return summary;
 }
 
@@ -73,7 +73,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
   const callApi = (opts) => callApiRaw({ breaker, ...opts });
   // fetch_all / export_data 공용: pageNo 를 올리며 항목을 모은다
   async function collectPages(args, ctx) {
-    const { url, params, serviceKey, keyName } = resolveCall(args, registry);
+    const { url, params, serviceKey, keyName } = await resolveCall(args, registry);
     const numOfRows = args.numOfRows || 100;
     const maxPages = Math.min(Math.max(1, args.maxPages || 5), 50);
     const all = [];
@@ -107,39 +107,38 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
         params: { type: 'object', description: '쿼리 파라미터 (serviceKey 제외)' },
         keyName: { type: 'string', description: '사용할 저장된 키 이름 (없으면 기본 키)' },
         serviceKey: { type: 'string', description: '키를 직접 넘길 때 (저장 키 대신)' },
-        method: { type: 'string', description: 'HTTP 메서드 (기본 GET)' },
         itemsOnly: { type: 'boolean', description: 'true 면 원본 대신 목록 항목(items)과 페이징 정보만 간추려 반환 (토큰 절약)' },
         maxItems: { type: 'number', description: 'itemsOnly 일 때 돌려줄 최대 항목 수 (기본 20)' },
         cacheSeconds: { type: 'number', description: '같은 호출을 이 초 동안 캐시(성공 응답만, 트래픽 절약). 기본 0=끔' },
       },
     },
   }, async (args, ctx) => {
-    const { url, params, serviceKey, keyName } = resolveCall(args, registry);
+    const { url, params, serviceKey, keyName } = await resolveCall(args, registry);
     const ttlMs = Math.max(0, Number(args.cacheSeconds) || 0) * 1000;
     const ck = cacheKey(url, params, keyName);
     let r = ttlMs && cache ? cache.get(ck) : undefined;
     const fromCache = Boolean(r);
     if (!r) {
-      r = await callApi({ url, params, serviceKey, method: args.method || 'GET', fetchImpl, sleep, logger, signal: ctx?.signal });
+      r = await callApi({ url, params, serviceKey, fetchImpl, sleep, logger, signal: ctx?.signal });
       usage?.record(keyName, { ok: r.ok });
       if (r.ok && ttlMs && cache) cache.set(ck, r, ttlMs);
     }
-    const 요약 = { ...summarizeResult(r), ...(fromCache ? { 캐시적중: true } : {}) };
+    const summary = { ...summarizeResult(r), ...(fromCache ? { cached: true } : {}) };
     if (args.itemsOnly) {
       const { items, ...page } = extractItems(r.data);
       const max = args.maxItems || 20;
-      return structured({ 요약, 페이징: page, 항목수: items.length, 항목: items.slice(0, max), 생략됨: Math.max(0, items.length - max) });
+      return structured({ summary, paging: page, count: items.length, items: items.slice(0, max), omitted: Math.max(0, items.length - max) });
     }
     // 원본이 너무 크면 AI 컨텍스트를 잡아먹으므로 잘라서 돌려주고 대안을 안내
-    const body = JSON.stringify({ 요약, 데이터: r.data }, null, 2);
+    const body = JSON.stringify({ summary, data: r.data }, null, 2);
     if (body.length > MAX_RAW_CHARS) {
       return { ...text(`${body.slice(0, MAX_RAW_CHARS)}
 …(이하 ${body.length - MAX_RAW_CHARS}자 생략)
 `
         + '※ 응답이 커서 잘랐어요. itemsOnly:true 로 항목만 받거나, 전체가 필요하면 fetch_all 을 쓰세요.'),
-        structuredContent: { 요약, 잘림: true } };
+        structuredContent: { summary, truncated: true } };
     }
-    return structured({ 요약, 데이터: r.data });
+    return structured({ summary, data: r.data });
   });
 
   // ── fetch_all : 페이지 자동 순회 ──
@@ -161,12 +160,12 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
     const { all, totalCount, pages, last } = await collectPages(args, ctx);
     const max = args.maxItems || 200;
     return structured({
-      요약: summarizeResult(last),
-      조회페이지: pages,
+      summary: summarizeResult(last),
+      pages,
       totalCount,
-      가져온항목수: all.length,
-      잘림: all.length > max || (totalCount != null && all.length < totalCount),
-      항목: all.slice(0, max),
+      count: all.length,
+      truncated: all.length > max || (totalCount != null && all.length < totalCount),
+      items: all.slice(0, max),
     });
   });
 
@@ -187,19 +186,19 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
   }, async (args, ctx) => {
     const { all, totalCount, pages, last } = await collectPages(args, ctx);
     if (!all.length) {
-      return text(`저장할 항목이 없어요. ${JSON.stringify(summarizeResult(last))}`);
+      return structured({ summary: summarizeResult(last), savedTo: null, rows: 0, bytes: 0, pages, totalCount, truncated: false, message: '저장할 항목이 없어요.' });
     }
     const w = writeExport(all, { format: args.format || 'csv', name: args.filename || 'export', dir: exportDir });
     return structured({
-      요약: summarizeResult(last), 저장됨: w.file, 행수: w.rows, 바이트: w.bytes, 조회페이지: pages, totalCount,
-      잘림: totalCount != null && all.length < totalCount,
+      summary: summarizeResult(last), savedTo: w.file, rows: w.rows, bytes: w.bytes, pages, totalCount,
+      truncated: totalCount != null && all.length < totalCount,
     });
   });
 
   // ── find_apply_targets : 신청 가능한(개인 자동승인 REST) API 고르기 — 공개 페이지만 사용 ──
   server.tool('find_apply_targets', {
     description: '키워드로 "개발단계 자동승인 REST" 오픈API 만 골라 id 목록을 준다(브라우저·로그인 불필요, 공개 페이지 기반). '
-      + '"날씨 API 5개 신청해줘" 같은 요청에서 먼저 이걸로 대상을 찾고, 결과 ids 를 apply_apis 에 넘긴다.',
+      + '"날씨 API 5개 신청해줘" 같은 요청에서 먼저 이걸로 대상을 찾고, 결과 ids 를 apply_api 의 ids 에 넘긴다.',
     inputSchema: { type: 'object', required: ['keyword'], properties: {
       keyword: { type: 'string', description: '검색어 (예: "날씨", "버스 도착", "미세먼지")' },
       limit: { type: 'number', description: '최대 개수 (기본 10, 상한 30)' },
@@ -210,9 +209,9 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       return text(`'${a.keyword}' 로 검색된 ${r.scanned}건 중 개발단계 자동승인 REST API 가 없어요. 다른 키워드로 시도하세요.`);
     }
     return pretty({
-      keyword: r.keyword, 검토한건수: r.scanned, count: r.count,
-      targets: r.targets.map((t) => ({ id: t.id, 이름: t.name, 기관: t.provider, 활용신청: t.applications, 트래픽: t.traffic })),
-      다음: `apply_apis { ids: [${r.targets.map((t) => `"${t.id}"`).join(', ')}] } 로 한 번에 신청 (로그인 필요: apply_status)`,
+      keyword: r.keyword, scanned: r.scanned, count: r.count,
+      targets: r.targets.map((t) => ({ id: t.id, name: t.name, provider: t.provider, applications: t.applications, traffic: t.traffic })),
+      next: `apply_api { ids: [${r.targets.map((t) => `"${t.id}"`).join(', ')}] } 로 한 번에 신청 (로그인 필요: apply_status)`,
     });
   });
 
@@ -238,15 +237,15 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       saved = `별칭 '${a.saveAs}' 로 저장됨 → call_api { endpoint: "${a.saveAs}", params: {…필수 파라미터} }`;
     }
     return pretty({
-      ...(saved ? { 저장: saved } : {}),
-      제목: spec.title, 제공기관: spec.provider, 데이터포맷: spec.format, 트래픽: spec.traffic,
-      요청주소: spec.endpoint, 서비스URL: spec.serviceUrl,
-      상세기능: spec.operations.map((o) => o.name),
-      ...(spec.operations.length > 1 ? { 참고: '요청주소는 첫 상세기능 기준이에요. 다른 기능은 서비스URL 뒤에 오퍼레이션명을 붙이며, 포털 페이지에서 확인하세요.' } : {}),
-      요청변수: spec.request.map((r) => `${r.required ? '[필수]' : '[선택]'} ${r.name}(${r.ko}) 예:${r.sample || '-'} — ${r.desc}`),
-      응답항목: spec.response.map((r) => `${r.name}(${r.ko})`),
-      call_api_예시: example,
-      상세페이지: spec.pageUrl,
+      ...(saved ? { saved } : {}),
+      title: spec.title, provider: spec.provider, format: spec.format, traffic: spec.traffic,
+      endpoint: spec.endpoint, serviceUrl: spec.serviceUrl,
+      operations: spec.operations.map((o) => o.name),
+      ...(spec.operations.length > 1 ? { note: '요청주소는 첫 상세기능 기준이에요. 다른 기능은 서비스URL 뒤에 오퍼레이션명을 붙이며, 포털 페이지에서 확인하세요.' } : {}),
+      request: spec.request.map((r) => `${r.required ? '[필수]' : '[선택]'} ${r.name}(${r.ko}) 예:${r.sample || '-'} — ${r.desc}`),
+      response: spec.response.map((r) => `${r.name}(${r.ko})`),
+      callExample: example,
+      pageUrl: spec.pageUrl,
     });
   });
 
@@ -255,7 +254,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       + '대량 호출 전에 확인하면 resultCode 22(한도 초과)를 피할 수 있다. (포털 실제 값이 아닌 로컬 집계)',
     inputSchema: { type: 'object', properties: { limit: { type: 'number', description: '일일 한도 (기본 1000)' } } },
   }, async (a) => {
-    if (!usage) return structured({ day: '-', limit: 0, total: 0, byKey: {}, 안내: '호출량 집계가 꺼져 있어요.' });
+    if (!usage) return structured({ day: '-', limit: 0, total: 0, byKey: {}, message: '호출량 집계가 꺼져 있어요.' });
     return structured(usage.summary({ limit: a.limit || undefined }));
   });
 
@@ -312,8 +311,8 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
     try {
       const r = await searchDatasets(a.query, { page, fetchImpl });
       if (r.items.length) {
-        return pretty({ query: a.query, page, 전체: r.total, count: r.items.length, items: r.items,
-          다음: '마음에 드는 항목의 id 로 describe_api 를 호출해 요청주소/파라미터를 확인하세요.' });
+        return pretty({ query: a.query, page, total: r.total, count: r.items.length, items: r.items,
+          next: '마음에 드는 항목의 id 로 describe_api 를 호출해 요청주소/파라미터를 확인하세요.' });
       }
       return text(`'${a.query}' 검색 결과가 없거나 파싱하지 못했어요. 포털에서 직접 확인: ${portalUrl}`);
     } catch (e) {

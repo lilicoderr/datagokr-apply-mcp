@@ -1,3 +1,4 @@
+process.env.DATAGO_ALLOW_LOCAL = '1';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -75,9 +76,9 @@ test('describe_api 도구: 명세와 call_api 예시 반환', async () => {
   registerTools(s, { registry: reg, fetchImpl: async () => ({ ok: true, status: 200, text: async () => html }) });
   const res = await s.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'describe_api', arguments: { idOrUrl: 'https://www.data.go.kr/data/15012690/openapi.do' } } });
   const out = JSON.parse(res.result.content[0].text);
-  assert.equal(out.제목, '한국천문연구원_특일 정보');
-  assert.equal(out.call_api_예시.params.solYear, '2019');
-  assert.ok(out.요청변수.some((l) => l.startsWith('[필수] solYear')));
+  assert.equal(out.title, '한국천문연구원_특일 정보');
+  assert.equal(out.callExample.params.solYear, '2019');
+  assert.ok(out.request.some((l) => l.startsWith('[필수] solYear')));
 });
 
 test('describe_api 도구: 파싱 불가 페이지는 안내 문구', async () => {
@@ -91,7 +92,7 @@ test('describe_api 도구: 파싱 불가 페이지는 안내 문구', async () =
 import { parseSearchResults, searchDatasets } from '../src/portal.js';
 const searchHtml = fs.readFileSync(new URL('./fixtures/search-results.html', import.meta.url), 'utf8');
 
-test('parseSearchResults: 카드 → 제목/분류/기관/요약/활용신청수', () => {
+test('parseSearchResults: 카드 → 제목/분류/기관/summary/활용신청수', () => {
   const r = parseSearchResults(searchHtml);
   assert.equal(r.total, 194);
   assert.ok(r.items.length >= 2);
@@ -142,7 +143,7 @@ test('isAutoApprovable: REST + 개발단계 자동승인만 true', () => {
 });
 
 test('findApplyTargets: 검색 → 상세 병렬 조회 → 자동승인만 반환 (브라우저 불필요)', async () => {
-  const card = (id, t) => `<div class="in-result-item"><div class="apply-result-category"><span>분류</span><span>기관</span></div><div class="apply-result-link"><span data-ext="XML">XML</span><a href="/data/${id}/openapi.do">${t}</a></div><span class="apply-result-summary">요약</span><ul><li><strong>활용신청</strong> 10건</li></ul></div>`;
+  const card = (id, t) => `<div class="in-result-item"><div class="apply-result-category"><span>분류</span><span>기관</span></div><div class="apply-result-link"><span data-ext="XML">XML</span><a href="/data/${id}/openapi.do">${t}</a></div><span class="apply-result-summary">summary</span><ul><li><strong>활용신청</strong> 10건</li></ul></div>`;
   const detail = (title, approval, type = 'REST') => `<title>${title} | 공공데이터포털</title><ul><li><strong class="key">API 유형</strong><div class="value">${type}</div></li><li><strong class="key">심의유형</strong><div class="value">${approval}</div></li><li><strong class="key">신청 가능 트래픽</strong><div class="value">개발계정 : 1,000</div></li></ul>`;
   const pages = {
     '111111': detail('A', '개발단계 : 자동승인 / 운영단계 : 자동승인'),

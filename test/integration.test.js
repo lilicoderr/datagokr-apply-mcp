@@ -43,29 +43,29 @@ async function withEnv(fn) {
 test('call_api: JSON 응답 해석 + 키 자동 부착', () => withEnv(async ({ base, call, seen }) => {
   const r = await call('call_api', { url: `${base}/list`, params: { pageNo: 1, numOfRows: 3 }, itemsOnly: true });
   const out = JSON.parse(r.content[0].text);
-  assert.equal(out.요약.ok, true);
-  assert.equal(out.항목수, 3);
-  assert.equal(out.페이징.totalCount, 7);
+  assert.equal(out.summary.ok, true);
+  assert.equal(out.count, 3);
+  assert.equal(out.paging.totalCount, 7);
   assert.match(seen[0], /serviceKey=/);
 }));
 
 test('call_api: XML 응답도 같은 형태로', () => withEnv(async ({ base, call }) => {
   const r = await call('call_api', { url: `${base}/xml`, itemsOnly: true });
   const out = JSON.parse(r.content[0].text);
-  assert.equal(out.요약.응답형식, 'xml');
-  assert.equal(out.항목[0].name, '가');
+  assert.equal(out.summary.format, 'xml');
+  assert.equal(out.items[0].name, '가');
 }));
 
 test('call_api: 쿼터 초과(22) 는 의미와 함께 실패로', () => withEnv(async ({ base, call }) => {
   const out = JSON.parse((await call('call_api', { url: `${base}/quota` })).content[0].text);
-  assert.equal(out.요약.ok, false);
-  assert.equal(out.요약.resultCode, '22');
+  assert.equal(out.summary.ok, false);
+  assert.equal(out.summary.resultCode, '22');
 }));
 
 test('call_api: 키 미등록(30) 은 반대 인코딩으로 재시도하고 실패 보고', () => withEnv(async ({ base, call, seen }) => {
   const out = JSON.parse((await call('call_api', { url: `${base}/badkey` })).content[0].text);
-  assert.equal(out.요약.ok, false);
-  assert.equal(out.요약.재시도됨, true);
+  assert.equal(out.summary.ok, false);
+  assert.equal(out.summary.retried, true);
   assert.equal(seen.length, 2);
 }));
 
