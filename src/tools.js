@@ -14,6 +14,7 @@ import { createBreaker } from './breaker.js';
 import { inferSchema } from './schema.js';
 import { recommendDatasets } from './recommend.js';
 import { structured } from './outputs.js';
+import { registerGeoTools } from './tools-geo.js';
 import { annotateTools } from './annotations.js';
 
 export const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
@@ -406,6 +407,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       return text(`검색 요청 실패: ${e.message}\n포털에서 직접 확인: https://www.data.go.kr/tcs/dss/selectDataSetList.do?keyword=${encodeURIComponent(a.query)}`);
     }
   });
+  registerGeoTools(server);
   annotateTools(server);
 }
 
