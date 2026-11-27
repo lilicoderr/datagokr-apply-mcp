@@ -125,3 +125,31 @@ test('applyFixes: perm 은 POSIX 에서만 chmod 600', async () => {
     assert.equal(fs.statSync(reg.file).mode & 0o777, 0o600);
   }
 });
+
+// ── 포털 파서 / 허용 호스트 점검 ──
+const realFx = (n) => fs.readFileSync(new URL(`./fixtures/real/${n}`, import.meta.url), 'utf8');
+const portalFetch = (body, status = 200) => async () => ({ ok: status < 400, status, text: async () => body });
+
+test('doctor: 포털 상세 레이아웃이 읽히면 portal ok', async () => {
+  const rs = await runDoctor({ fetchImpl: portalFetch(realFx('openapi-spcde.html')), env: {} });
+  assert.equal(byId(rs, 'portal').status, 'ok');
+  assert.match(byId(rs, 'portal').detail, /요청변수 4개/);
+  assert.equal(byId(rs, 'hosts'), undefined);
+});
+
+test('doctor: 레이아웃이 바뀌었거나 접속 불가면 portal warn + 영어 hint (fail 은 아님)', async () => {
+  let rs = await runDoctor({ fetchImpl: portalFetch('<title>x | y</title>'), env: {} });
+  assert.equal(byId(rs, 'portal').status, 'warn');
+  assert.match(byId(rs, 'portal').hint, /layout/);
+  rs = await runDoctor({ fetchImpl: portalFetch('x', 503), env: {} });
+  assert.equal(byId(rs, 'portal').status, 'warn');
+  assert.match(byId(rs, 'portal').hint, /503/);
+  assert.equal(exitCode(rs), 0);
+});
+
+test('doctor: DATAGO_ALLOWED_HOSTS 로 키 전송 호스트를 넓히면 warn, portalCheck:false 로 끌 수 있다', async () => {
+  const rs = await runDoctor({ fetchImpl: okFetch, portalCheck: false, env: { DATAGO_ALLOWED_HOSTS: 'api.example.kr, other.kr' } });
+  assert.equal(byId(rs, 'hosts').status, 'warn');
+  assert.match(byId(rs, 'hosts').detail, /api\.example\.kr,other\.kr/);
+  assert.equal(byId(rs, 'portal'), undefined);
+});

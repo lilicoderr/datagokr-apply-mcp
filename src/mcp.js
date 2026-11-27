@@ -9,6 +9,8 @@
 //     s.listen();                      // stdin/stdout 에 연결
 //     // 테스트: s.handle(messageObject) 로 요청 객체를 직접 처리
 
+import { hintForError } from './errorhints.js';
+
 export const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const DEFAULT_PROTOCOL = '2024-11-05';
 
@@ -120,8 +122,11 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
           } catch (err) {
             if (err instanceof CancelledError) return null; // 취소된 요청에는 응답하지 않는다
             // 도구 실행 오류는 프로토콜 오류가 아니라 content.isError 로 전달 (MCP 권장)
+            const message = String(err?.message || err);
+            const hint = hintForError(err);
             return reply(rpcResult(msg.id, {
-              content: [{ type: 'text', text: `오류: ${err?.message || err}` }],
+              content: [{ type: 'text', text: `오류: ${message}\nhint: ${hint}` }],
+              structuredContent: { ok: false, error: message, hint },
               isError: true,
             }));
           }
@@ -221,3 +226,4 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
   const api = { tool, resource, prompt, handle, listen, get initialized() { return initialized; }, tools };
   return api;
 }
+

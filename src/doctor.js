@@ -4,6 +4,7 @@
 //   모든 외부 의존(파일/네트워크/브라우저)은 deps 로 주입해 테스트에서 바꿔 끼운다.
 
 import fs from 'node:fs';
+import { fetchApiSpec } from './portal.js';
 
 const MIN_NODE_MAJOR = 20;
 
@@ -22,10 +23,12 @@ export async function runDoctor({
   nodeVersion = process.versions.node,
   platform = process.platform,
   netUrl = 'https://apis.data.go.kr',
+  portalCheck = true,
+  env = process.env,
   timeoutMs = 6000,
 } = {}) {
   const out = [];
-  const add = (id, status, title, detail, fix) => out.push({ id, status, title, detail, ...(fix ? { fix } : {}) });
+  const add = (id, status, title, detail, fix, hint) => out.push({ id, status, title, detail, ...(fix ? { fix } : {}), ...(hint ? { hint } : {}) });
 
   // 1) Node 버전
   const major = nodeMajor(nodeVersion);
@@ -63,6 +66,29 @@ export async function runDoctor({
     } finally { clearTimeout(timer); }
   } catch (e) {
     add('network', 'fail', '공공데이터 서버 연결', `${netUrl} 접속 실패: ${e?.cause?.code || e?.name || e?.message}`, '인터넷/프록시/방화벽을 확인하세요.');
+  }
+
+  // 3-1) 검색/명세 파서가 지금 포털 레이아웃을 읽을 수 있는가 (describe_api·find_apply_targets 의 전제)
+  if (portalCheck) {
+    try {
+      const spec = await fetchApiSpec('15012690', { fetchImpl, timeoutMs });
+      if (spec.found && spec.endpoint && spec.request.length) {
+        add('portal', 'ok', '포털 명세 파서', `상세 페이지 레이아웃 인식 (요청변수 ${spec.request.length}개, 상세기능 ${spec.operations.length}개)`);
+      } else {
+        add('portal', 'warn', '포털 명세 파서', '상세 페이지는 열리지만 요청주소/변수를 읽지 못했어요 (포털 레이아웃 변경 가능성)',
+          'describe_api / find_apply_targets 결과가 비면 이슈로 알려주세요. 호출은 URL 을 직접 알면 call_api 로 가능해요.', 'Portal detail layout not recognised; parsers may need an update.');
+      }
+    } catch (e) {
+      add('portal', 'warn', '포털 명세 파서', `테스트 페이지를 가져오지 못했어요: ${e?.message || e}`, '네트워크를 확인하세요. data.go.kr 웹(www)이 막혀 있으면 search_datasets/describe_api 가 동작하지 않아요.',
+        e?.hint || 'Cannot reach www.data.go.kr; search/describe unavailable.');
+    }
+  }
+
+  // 3-2) 서비스 키 전송 허용 호스트 (기본: 공공데이터 호스트만)
+  const extra = String(env.DATAGO_ALLOWED_HOSTS || '').split(',').map((h) => h.trim()).filter(Boolean);
+  if (extra.length) {
+    add('hosts', 'warn', '키 전송 허용 호스트 확장', `DATAGO_ALLOWED_HOSTS=${extra.join(',')} — 서비스 키가 이 호스트로도 전송돼요`,
+      '신뢰하는 기관 호스트만 넣었는지 확인하세요.', 'Custom hosts allowed to receive the service key; verify they are trusted.');
   }
 
   // 4) 활용신청 자동화 (선택 기능)

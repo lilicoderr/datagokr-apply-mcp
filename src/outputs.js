@@ -10,7 +10,7 @@ const SUMMARY = obj({
   ok: { type: 'boolean' }, httpStatus: { type: 'number' }, resultCode: { type: ['string', 'number'] },
   meaning: { type: 'string' }, message: { type: ['string', 'null'] }, format: { type: 'string' },
   keyEncoding: { type: 'string' }, retried: { type: 'boolean' }, attempts: { type: 'number' },
-  hint: { type: 'string' }, cached: { type: 'boolean' },
+  hint: { type: 'string' }, advice: { type: 'string' }, skipped: { type: 'boolean' }, missing: { type: 'array' }, warnings: { type: 'array' }, cached: { type: 'boolean' },
 }, ['ok']);
 const KEYINFO = obj({
   ok: { type: 'boolean' }, saved: { type: 'boolean' }, keyName: { type: 'string' },

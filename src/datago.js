@@ -65,6 +65,24 @@ export const RESULT_HINTS = {
   '32': '호출 IP 가 등록된 IP 가 아니에요. 포털 개발계정 설정에서 IP 를 확인하세요.',
 };
 
+// 같은 안내의 영어판 — 구조화 출력의 `hint` 키(모델용). 한국어 안내는 `advice`.
+export const RESULT_HINTS_EN = {
+  '01': 'Provider server error; retry shortly.', '02': 'Provider database error; retry shortly.', '03': 'No data for these parameters; widen the range.',
+  '05': 'Provider did not respond; retry later.',
+  '10': 'Bad parameter format; check types/lengths with describe_api.', '11': 'Required parameter missing; compare with describe_api [required] list.',
+  '12': 'Wrong or retired URL; re-read the endpoint with describe_api.', '20': 'Application not approved yet; check my_applications (auto-approval can take 1-2h).',
+  '21': 'Key temporarily disabled; retry later.', '22': 'Daily traffic limit exceeded; wait until tomorrow or request an increase (see quota_status).',
+  '30': 'Key not registered: typo, approval still pending, or key belongs to another API; run doctor.', '31': 'Usage period expired; extend it on the portal.',
+  '32': 'Caller IP not registered in the account settings.', '33': 'Call must be signed; follow the portal call instructions.',
+  'INFO-100': 'Agency-specific key required (not the data.go.kr key).', 'INFO-200': 'No data for these parameters.', 'ERROR-300': 'Required value missing; see describe_api.',
+};
+
+export function hintEnFor(code) {
+  if (code == null) return null;
+  const c = String(code).padStart(2, '0');
+  return RESULT_HINTS_EN[c] || RESULT_HINTS_EN[String(code).toUpperCase()] || null;
+}
+
 export function hintFor(code) {
   if (code == null) return null;
   const c = String(code).padStart(2, '0');
@@ -236,6 +254,7 @@ export async function callApi({
       resultMsg,
       codeMeaning: describeResultCode(resultCode),
       hint,
+      html: Boolean(html),
       kind,
       data,
       url: fullUrl,

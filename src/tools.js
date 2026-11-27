@@ -3,7 +3,7 @@
 //   registerTools(server, { registry, fetchImpl }) 로 서버에 도구를 붙인다.
 //   (fetchImpl 주입으로 테스트에서 네트워크 없이 검증)
 
-import { callApi as callApiRaw, describeResultCode, isEncodedKey, RESULT_CODES } from './datago.js';
+import { callApi as callApiRaw, hintEnFor, describeResultCode, isEncodedKey, RESULT_CODES } from './datago.js';
 import { extractItems, hasMore } from './items.js';
 import { fetchApiSpec, buildExampleParams, searchDatasets, findApplyTargets } from './portal.js';
 import { cacheKey } from './cache.js';
@@ -85,7 +85,12 @@ function summarizeResult(r) {
     retried: Boolean(r.retried),
     attempts: r.attempts ?? 1,
   };
-  if (!r.ok && r.hint) summary.hint = r.hint;
+  if (!r.ok) {
+    // hint: 영어(모델용), advice: 한국어(사용자용)
+    const en = hintEnFor(r.resultCode) || (r.html ? 'Response is HTML, not JSON/XML (maintenance/blocked page); retry later.' : r.httpStatus >= 400 ? `HTTP ${r.httpStatus}; check URL and params.` : null);
+    if (en) summary.hint = en;
+    if (r.hint) summary.advice = r.hint;
+  }
   return summary;
 }
 
@@ -222,6 +227,8 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       },
     },
   }, async (args, ctx) => {
+    // 트래픽을 쓰기 전에 형식부터 검증한다
+    if (args.format && !['csv', 'json'].includes(args.format)) throw new Error("format 은 'csv' 또는 'json' 입니다.");
     const { all, totalCount, pages, last } = await collectPages(args, ctx);
     if (!all.length) {
       return structured({ summary: summarizeResult(last), savedTo: null, rows: 0, bytes: 0, pages, totalCount, truncated: false, message: '저장할 항목이 없어요.' });
