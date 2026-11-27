@@ -13,7 +13,7 @@
 
 **English** · [한국어](README.ko.md)
 
-[Quick start](#quick-start) · [Tools](#tools-25) · [Recipes](docs/recipes.md) · [Error catalog](docs/error-catalog.md) · [Auto-apply](#auto-apply-for-api-keys) · [Security](#security) · [FAQ](#faq) · [Contributing](CONTRIBUTING.md)
+[Quick start](#quick-start) · [Tools](#tools-27) · [Recipes](docs/recipes.md) · [Error catalog](docs/error-catalog.md) · [Auto-apply](#auto-apply-for-api-keys) · [Security](#security) · [FAQ](#faq) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -111,7 +111,7 @@ Add the same entry under `mcpServers` in `claude_desktop_config.json`.
 
 Copy [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) to `~/.claude/skills/datagokr/`. Claude will then follow **search → read spec → apply → call** whenever you ask for a public-data API.
 
-## Tools (25)
+## Tools (27)
 
 **Explore and call** — no login needed
 
@@ -124,6 +124,8 @@ Copy [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) to `~/.claude/skills
 | `call_api` | Calls an API: auto key, double-encoding fix, JSON/XML parsing, retries, `itemsOnly`, `cacheSeconds` (TTL cache to save quota) |
 | `fetch_all` | Walks every page and returns the merged items (`maxPages` cap) |
 | `export_data` | Saves the full result as **CSV (Excel-safe BOM) or JSON** and returns only the path — keeps big datasets out of the model's context |
+| `recommend_datasets` | Natural-language request → several portal searches → **ranked candidates** |
+| `infer_schema` | Live sample → per-field **types, missing rate, enums** |
 | `batch_call` | Calls one API with many param sets, throttled, max 50, optional stop-on-error |
 | `quota_status` | Today's (KST) per-key call count and estimated remaining quota |
 | `explain_error` · `list_error_codes` | `resultCode` → plain explanation |
@@ -180,7 +182,10 @@ You can also get a key by hand: log in → **활용신청** on the API page → 
 | `DATAGO_EXPORT_DIR` | `~/datago-exports` | Where `export_data` writes (it never writes outside this folder) |
 | `DATAGO_HOME` | `~/.datagokr-mcp` | Login-session (cookie) folder |
 | `DATAGO_STATE` | `$DATAGO_HOME/storage-state.json` | Explicit session file path |
-| `DATAGO_DEBUG` | off | `1` logs request URL, status and timing to stderr (service key masked as `***`) |
+| `DATAGO_DEBUG` | off | `1` = debug logs to stderr (service key, cookies and stored keys masked as `***`) |
+| `DATAGO_LOG_LEVEL` / `DATAGO_LOG_FORMAT` | off / `json` | `error\|warn\|info\|debug`; `text` for plain lines |
+| `DATAGO_ALLOWED_HOSTS` | (any public host) | Comma-separated domains `call_api` may contact |
+| `DATAGO_ALLOW_LOCAL` | off | `1` allows loopback/private targets (blocked by default) |
 
 ## Security
 

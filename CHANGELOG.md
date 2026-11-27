@@ -2,6 +2,28 @@
 
 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식, [SemVer](https://semver.org/lang/ko/) 를 따릅니다.
 
+## [1.3.0]
+
+### 추가
+- MCP **resources**(`datago://keys` 마스킹된 키 메타데이터, `datago://endpoints`, `datago://usage`, `datago://guide/usage`)와 **prompts**(`find-and-call-api`)
+- `recommend_datasets` — 자연어 질의를 키워드로 나눠 포털을 검색하고 점수로 재정렬
+- `infer_schema` — 실제 응답 표본에서 필드 타입·결측률·enum 후보 추정
+- 호스트별 **서킷 브레이커** (연속 5회 실패 시 30초 fail-fast)
+- `--print-config [claude-desktop|claude-code|cursor|all]` 설치 스니펫 출력
+- 구조화(JSON lines) 로거와 비밀값 마스킹 (`DATAGO_LOG_LEVEL`, `DATAGO_LOG_FORMAT`)
+- 문서: `docs/recipes.md`(레시피 5개), `docs/error-catalog.md`(코드에서 생성, `npm run docs:errors`)
+- `npm run bench` 오프라인 마이크로 벤치마크
+- 로컬 HTTP 서버 + fixture 기반 오프라인 통합 테스트
+
+### 보안
+- `export_data`: 심볼릭 링크 덮어쓰기 차단(임시 파일 → rename), Windows 예약 파일명 회피
+- 호출 대상 검증: http/https 만, 루프백·사설·메타데이터 주소 차단(`DATAGO_ALLOW_LOCAL=1` 로 해제), `DATAGO_ALLOWED_HOSTS` 허용 목록
+- 키/별칭 이름 검증으로 프로토타입 오염 방지, 손상 백업 파일 0600
+
+### 변경
+- 테스트 127 → 168개
+- 호환성 주의: 로컬/사설 주소로의 `call_api` 는 기본 차단됩니다
+
 ## [1.2.0]
 
 ### 추가
