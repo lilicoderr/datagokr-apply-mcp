@@ -40,7 +40,7 @@ export async function runDoctor({
     if (!exists) {
       add('config', 'warn', '설정 파일', `${registry.file} 없음 (첫 사용)`, 'save_key 도구로 키를 저장하면 자동 생성돼요. 키가 없으면 apply_api 로 발급받으세요.');
     } else if (!names.length) {
-      add('keys', 'warn', '서비스 키', '저장된 키 없음', 'save_key 로 키를 저장하세요. (apply_guide 참고)');
+      add('keys', 'warn', '서비스 키', '저장된 키 없음', 'save_key 로 키를 저장하세요. (키가 없으면 apply_api 로 활용신청)');
     } else {
       add('keys', defaultKey ? 'ok' : 'warn', '서비스 키', `${names.length}개 저장 (기본: ${defaultKey ?? '없음'}) — ${names.map((n) => `${n}[${keys[n].encoded ? 'Encoding' : 'Decoding'}]`).join(', ')}`,
         defaultKey ? undefined : 'set_default_key 로 기본 키를 지정하세요.');

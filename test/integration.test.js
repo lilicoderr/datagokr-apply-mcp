@@ -82,9 +82,3 @@ test('export_data: CSV 파일 저장, 키는 파일에 없음', () => withEnv(as
   assert.equal(csv.trim().split('\n').length, 8);
   assert.ok(!csv.includes(KEY));
 }));
-
-test('infer_schema: 실제 응답에서 필드 추정', () => withEnv(async ({ base, call }) => {
-  const out = JSON.parse((await call('infer_schema', { url: `${base}/list`, params: { numOfRows: 3 } })).content[0].text);
-  assert.equal(out.fields.dt.type, 'date(yyyymmdd)');
-  assert.ok(out.sampleSize >= 3);
-}));

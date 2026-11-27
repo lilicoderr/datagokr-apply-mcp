@@ -8,28 +8,21 @@ import { extractItems, hasMore } from './items.js';
 import { fetchApiSpec, buildExampleParams, searchDatasets, findApplyTargets } from './portal.js';
 import { cacheKey } from './cache.js';
 import { writeExport } from './export.js';
-import { toTypeScript } from './hints.js';
 import { assertSafeTarget } from './security.js';
 import { createBreaker } from './breaker.js';
-import { inferSchema } from './schema.js';
-import { recommendDatasets } from './recommend.js';
 import { structured } from './outputs.js';
-import { registerGeoTools } from './tools-geo.js';
-import { registerWatchTools } from './tools-watch.js';
 import { annotateTools } from './annotations.js';
 
-export const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
+export const APPLY_GUIDE = `공공데이터포털 오픈API 활용신청 → 키 발급 → 호출 흐름 (이 서버가 처음부터 끝까지 자동화한다):
 
-1. https://www.data.go.kr 에 로그인한다.
-2. 원하는 오픈API 상세 페이지에서 [활용신청] 을 누른다.
-3. 활용목적을 적고 신청한다. (대부분 자동승인, 일부는 1~2일 심사)
-4. 마이페이지 > 오픈API > 개발계정 에서 "일반 인증키(Encoding/Decoding)" 를 확인한다.
-5. 그 키를 save_key 도구로 저장하면 call_api 에서 바로 쓸 수 있다.
+1. apply_status 로 로그인 세션을 확인한다. 없으면 apply_login 으로 창을 띄우고, 사용자가 그 창에서 직접 로그인한다(비밀번호는 저장하지 않음).
+2. find_apply_targets(자동승인 REST 만 골라 줌) 또는 search_datasets 로 대상을 찾고, describe_api 로 요청 변수를 확인한다.
+3. apply_api 로 활용신청한다. 여러 개면 ids 배열로 한 번에. 개인 자동승인 API 는 바로 승인된다.
+4. 승인 뒤 일반 인증키(Encoding/Decoding)를 마이페이지에서 자동으로 읽어 save_key 로 저장한다(apply_get_key 로 다시 시도 가능).
+5. call_api 로 호출한다. 키는 자동으로 붙고 Encoding/Decoding 어느 쪽이든 인코딩이 보정된다.
 
-주의:
-- Encoding 키에는 %2B %2F 같은 문자가 들어 있고, Decoding 키는 +/= 등이 그대로 보인다.
-- 이 서버는 둘 중 아무거나 저장해도 자동으로 인코딩을 맞춰 호출한다.
-- 트래픽 제한(개발계정 보통 일 1,000회)을 넘기면 resultCode 22 가 난다.`;
+수동으로 할 때: data.go.kr 로그인 → API 상세 페이지 [활용신청] → 마이페이지 > 오픈API > 개발계정에서 인증키 확인 → save_key.
+트래픽 제한(개발계정 보통 일 1,000회)을 넘기면 resultCode 22 가 난다. 막히면 doctor 를 실행하라.`;
 
 function text(t) { return { content: [{ type: 'text', text: t }] }; }
 export const MAX_RAW_CHARS = 20000;
@@ -51,7 +44,7 @@ function resolveCall(args, registry) {
   if (!serviceKey) {
     throw new Error(args.keyName
       ? `저장된 키 '${args.keyName}' 가 없습니다. list_keys 로 확인하세요.`
-      : '서비스 키가 없습니다. save_key 로 저장하거나 serviceKey 를 넘기세요. (apply_guide 참고)');
+      : '서비스 키가 없습니다. save_key 로 저장하거나 serviceKey 를 넘기세요. (키가 없으면 apply_api 로 활용신청하세요)');
   }
   return { url, params, serviceKey, keyName: args.keyName || registry?.listKeys().defaultKey || 'direct' };
 }
@@ -76,7 +69,7 @@ function summarizeResult(r) {
  * @param {any} server
  * @param {import('./types.js').Options} [options]
  */
-export function registerTools(server, { registry, fetchImpl, usage, sleep, logger, cache, exportDir, breaker = createBreaker(), watchStore } = {}) {
+export function registerTools(server, { registry, fetchImpl, usage, sleep, logger, cache, exportDir, breaker = createBreaker() } = {}) {
   const callApi = (opts) => callApiRaw({ breaker, ...opts });
   // fetch_all / export_data 공용: pageNo 를 올리며 항목을 모은다
   async function collectPages(args, ctx) {
@@ -257,74 +250,6 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
     });
   });
 
-  // ── api_types : 명세 → TypeScript 타입 (개발자가 코드에 바로 붙여넣기) ──
-  server.tool('api_types', {
-    description: '데이터 id(또는 상세 URL)의 명세를 읽어 요청 변수/응답 항목의 TypeScript 인터페이스를 생성한다. '
-      + '앱 코드에 이 API 를 붙일 때 describe_api 대신 쓰면 바로 복사해 쓸 타입이 나온다. 로그인 불필요.',
-    inputSchema: { type: 'object', required: ['idOrUrl'], properties: {
-      idOrUrl: { type: 'string', description: '데이터 id 또는 data.go.kr/data/<id>/... URL' },
-      name: { type: 'string', description: '타입 이름 접두사 (기본: API 제목)' },
-    } },
-  }, async (a) => {
-    const spec = await fetchApiSpec(a.idOrUrl, { fetchImpl });
-    if (!spec.found) return text(`명세를 읽지 못했어요. 직접 확인: ${spec.pageUrl}`);
-    return text(`// ${spec.title} — ${spec.endpoint || spec.pageUrl}\n${toTypeScript(spec, { name: a.name })}`);
-  });
-
-  // ── infer_schema : 실제 응답으로 필드 타입/결측률 추정 ──
-  server.tool('infer_schema', {
-    description: '실제로 한 번 호출해서 응답 항목들의 필드별 타입(날짜/숫자문자열 등)·결측률·예시·enum 후보를 추정한다. '
-      + '명세(describe_api)와 실제 응답이 다를 때나 데이터 파이프라인을 만들 때 쓴다. 1회 호출(트래픽 1) 소모.',
-    inputSchema: { type: 'object', properties: {
-      url: { type: 'string' }, endpoint: { type: 'string' }, params: { type: 'object' },
-      keyName: { type: 'string' }, serviceKey: { type: 'string' },
-      numOfRows: { type: 'number', description: '표본 크기 (기본 50)' },
-    } },
-  }, async (args) => {
-    const { url, params, serviceKey, keyName } = resolveCall(args, registry);
-    const r = await callApi({ url, params: { ...params, pageNo: 1, numOfRows: args.numOfRows || 50 }, serviceKey, fetchImpl, sleep, logger });
-    usage?.record(keyName, { ok: r.ok });
-    if (!r.ok) return pretty({ ...summarizeResult(r), 안내: '호출에 실패해 스키마를 추정하지 못했어요.' });
-    const { items, totalCount } = extractItems(r.data);
-    if (!items.length) return text('응답에 항목이 없어요. params 를 바꿔 다시 시도하세요.');
-    return pretty({ totalCount, ...inferSchema(items) });
-  });
-
-  // ── batch_call : 같은 API 를 여러 params 로 호출 (호출 간격 제한) ──
-  server.tool('batch_call', {
-    description: '같은 API 를 paramsList 의 각 params 로 차례로 호출해 항목수/성공 여부를 모아 돌려준다 '
-      + '(예: 여러 지역·월 조회). 호출 사이에 intervalMs 만큼 쉬어 트래픽 제한을 피하고, 실패하면 stopOnError 로 중단할 수 있다. '
-      + '한 번에 최대 50건.',
-    inputSchema: { type: 'object', required: ['paramsList'], properties: {
-      url: { type: 'string' }, endpoint: { type: 'string' }, keyName: { type: 'string' }, serviceKey: { type: 'string' },
-      params: { type: 'object', description: '모든 호출에 공통으로 붙는 params' },
-      paramsList: { type: 'array', description: '호출별 params 배열 (최대 50)', items: { type: 'object' } },
-      intervalMs: { type: 'number', description: '호출 간 대기(기본 200ms)' },
-      stopOnError: { type: 'boolean' },
-      maxItems: { type: 'number', description: '호출당 응답에 담을 최대 항목 (기본 5)' },
-    } },
-  }, async (args, ctx) => {
-    const list = Array.isArray(args.paramsList) ? args.paramsList.slice(0, 50) : [];
-    if (!list.length) throw new Error('paramsList 가 비어 있어요.');
-    const { url, params, serviceKey, keyName } = resolveCall(args, registry);
-    const wait = sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
-    const gap = Math.max(0, args.intervalMs ?? 200);
-    const results = [];
-    for (let i = 0; i < list.length; i++) {
-      ctx?.signal?.throwIfAborted();
-      if (i > 0 && gap) await wait(gap);
-      const r = await callApi({ url, params: { ...params, ...list[i] }, serviceKey, fetchImpl, sleep, logger, signal: ctx?.signal });
-      ctx?.progress?.(i + 1, list.length, `${i + 1}/${list.length} 호출`);
-      usage?.record(keyName, { ok: r.ok });
-      const ex = extractItems(r.data);
-      results.push({ params: list[i], ok: r.ok, resultCode: r.resultCode ?? null, totalCount: ex.totalCount,
-        항목수: ex.items.length, 항목: ex.items.slice(0, args.maxItems ?? 5), ...(r.ok ? {} : { 도움말: r.hint }) });
-      if (!r.ok && args.stopOnError) break;
-    }
-    const okCount = results.filter((x) => x.ok).length;
-    return pretty({ 요청: list.length, 실행: results.length, 성공: okCount, 실패: results.length - okCount, 결과: results });
-  });
-
   server.tool('quota_status', {
     description: '오늘(KST) 이 서버로 호출한 횟수를 키별로 보여주고 개발계정 일일 한도(기본 1,000회) 대비 남은 양을 추정한다. '
       + '대량 호출 전에 확인하면 resultCode 22(한도 초과)를 피할 수 있다. (포털 실제 값이 아닌 로컬 집계)',
@@ -368,26 +293,9 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
 
   // ── 도움말 ──
   server.tool('explain_error', {
-    description: '공공데이터포털 resultCode 를 사람이 읽을 설명으로 변환한다.',
-    inputSchema: { type: 'object', required: ['code'], properties: { code: { type: 'string' } } },
-  }, async (a) => text(`${a.code}: ${describeResultCode(a.code)}`));
-  server.tool('list_error_codes', { description: '공공데이터포털 공통 resultCode 전체 표.' },
-    async () => pretty(RESULT_CODES));
-  server.tool('apply_guide', { description: '오픈API 활용신청(키 발급) 방법 안내. (로그인 필요, 자동화 불가)' },
-    async () => text(APPLY_GUIDE));
-
-  server.tool('recommend_datasets', {
-    description: '자연어로 원하는 데이터를 설명하면(예: "내 동네 미세먼지 알려주는 API") 질의를 키워드로 나눠 포털을 여러 번 검색하고 '
-      + '제목 일치·활용신청 수·JSON 지원 등으로 점수를 매겨 상위 후보를 추천한다. 다음은 describe_api.',
-    inputSchema: { type: 'object', required: ['query'], properties: {
-      query: { type: 'string', description: '원하는 데이터를 문장으로' },
-      limit: { type: 'number', description: '추천 개수 (기본 5, 최대 10)' },
-    } },
-  }, async (a) => {
-    const r = await recommendDatasets(a.query, { limit: Math.min(a.limit || 5, 10), fetchImpl });
-    if (!r.recommendations.length) return text(`'${a.query}' 에 맞는 API 를 찾지 못했어요. 더 짧은 키워드로 search_datasets 를 써 보세요.`);
-    return pretty({ ...r, 다음: '상위 항목의 id 로 describe_api 를 호출하세요.' });
-  });
+    description: '공공데이터포털 resultCode 를 사람이 읽을 설명으로 변환한다. code 를 생략하면 공통 resultCode 전체 표를 돌려준다.',
+    inputSchema: { type: 'object', properties: { code: { type: 'string' } } },
+  }, async (a) => (a.code ? text(`${a.code}: ${describeResultCode(a.code)}`) : pretty(RESULT_CODES)));
 
   // ── 데이터셋 검색 (베스트 에포트: 포털 공개 검색) ──
   server.tool('search_datasets', {
@@ -412,8 +320,6 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       return text(`검색 요청 실패: ${e.message}\n포털에서 직접 확인: https://www.data.go.kr/tcs/dss/selectDataSetList.do?keyword=${encodeURIComponent(a.query)}`);
     }
   });
-  registerGeoTools(server);
-  registerWatchTools(server, { fetchImpl, store: watchStore });
   annotateTools(server);
 }
 

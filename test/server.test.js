@@ -83,7 +83,7 @@ test('registerTools: 전체 도구 등록 + call_api 가 저장 키 사용', asy
   const s = createServer();
   registerTools(s, { registry: reg, fetchImpl });
   const names = [...s.tools.keys()];
-  for (const t of ['call_api', 'save_key', 'list_keys', 'save_endpoint', 'apply_guide', 'search_datasets', 'explain_error']) {
+  for (const t of ['call_api', 'save_key', 'list_keys', 'save_endpoint', 'search_datasets', 'explain_error']) {
     assert.ok(names.includes(t), `도구 누락: ${t}`);
   }
   // 키 저장 후 호출

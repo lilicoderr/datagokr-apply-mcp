@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkNodeVersion, checkWritable, platformGuide, checkStdio, checkHttp, runSelfcheck } from '../src/selfcheck.js';
+import { checkNodeVersion, checkWritable, platformGuide, checkStdio, runSelfcheck } from '../src/selfcheck.js';
 
 test('checkNodeVersion', () => {
   assert.equal(checkNodeVersion('20.0.0').ok, true);
@@ -24,10 +24,9 @@ test('platformGuide: OS 별 설정 경로', () => {
   assert.match(platformGuide('linux', {}, '/home/a'), /Linux/);
 });
 
-test('실제 서버 기동: stdio 와 HTTP', async () => {
+test('실제 서버 기동: stdio', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-home-'));
   const a = await checkStdio(home); assert.equal(a.ok, true, a.detail);
-  const b = await checkHttp(home); assert.equal(b.ok, true, b.detail);
 });
 
 test('runSelfcheck 전체가 0 으로 끝난다', async () => {

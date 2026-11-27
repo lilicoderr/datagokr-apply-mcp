@@ -1,5 +1,5 @@
 // 설치 검증 (npm run selfcheck) — Windows/macOS/Linux 공통.
-// 실제로 서버를 띄워 보고(stdio, HTTP) 설치 가이드대로 동작하는지 확인한다. 네트워크·키·로그인은 필요 없다.
+// 실제로 서버를 띄워 보고(stdio) 설치 가이드대로 동작하는지 확인한다. 네트워크·키·로그인은 필요 없다.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -19,7 +19,7 @@ export function checkNodeVersion(version = process.versions.node) {
 
 function childEnv(home) {
   return { ...process.env, DATAGO_CONFIG: path.join(home, 'cfg.json'), DATAGO_USAGE: path.join(home, 'usage.json'),
-    DATAGO_WATCH: path.join(home, 'watch.json'), DATAGO_HOME: path.join(home, 'session'), DATAGO_HTTP_TOKEN: '' };
+    DATAGO_HOME: path.join(home, 'session') };
 }
 
 // stdio: initialize → tools/list 왕복
@@ -38,26 +38,6 @@ export function checkStdio(home, timeoutMs = 15000) {
       } catch { resolve({ ok: false, detail: `stdout 이 JSON-RPC 가 아님: ${buf.slice(0, 80)}` }); }
     });
     p.stdin.end(rpc(1, 'initialize', { protocolVersion: '2025-06-18' }) + rpc(2, 'tools/list'));
-  });
-}
-
-// HTTP: 임의 포트에 --http 로 띄워 ping
-export function checkHttp(home, timeoutMs = 15000) {
-  return new Promise((resolve) => {
-    const p = spawn(process.execPath, [SERVER, '--http', '--port', '0'], { env: childEnv(home), stdio: ['ignore', 'ignore', 'pipe'] });
-    let done = false; let err = '';
-    const finish = (r) => { if (!done) { done = true; clearTimeout(timer); p.kill(); resolve(r); } };
-    const timer = setTimeout(() => finish({ ok: false, detail: `HTTP 시간 초과 ${err.slice(0, 80)}` }), timeoutMs);
-    p.on('error', (e) => finish({ ok: false, detail: e.message }));
-    p.stderr.on('data', async (d) => {
-      err += d;
-      const m = /http:\/\/([\d.]+):(\d+)\/mcp/.exec(err);
-      if (!m) return;
-      try {
-        const res = await fetch(`http://${m[1]}:${m[2]}/mcp`, { method: 'POST', body: rpc(1, 'ping') });
-        finish(res.ok && m[1] === '127.0.0.1' ? { ok: true, detail: 'HTTP OK (127.0.0.1 전용)' } : { ok: false, detail: `HTTP ${res.status} @ ${m[1]}` });
-      } catch (e) { finish({ ok: false, detail: e.message }); }
-    });
   });
 }
 
@@ -82,7 +62,6 @@ export async function runSelfcheck({ log = console.log } = {}) {
   const checks = [
     ['Node 버전', checkNodeVersion()],
     ['서버 stdio', await checkStdio(home)],
-    ['서버 HTTP', await checkHttp(home)],
     ['홈 폴더 쓰기', checkWritable(path.join(home, 'w'))],
     ['playwright-core(선택)', { ok: true, detail: optionalPw ? '설치됨 — 활용신청 자동화 사용 가능' : '미설치 — 활용신청 자동화를 쓰려면 npm i playwright-core && npx playwright-core install chromium' }],
   ];

@@ -11,18 +11,17 @@ const NET = { ro: true, open: true };
 const W = { ro: false, dest: false, idem: true, open: false };
 
 export const TOOL_ANNOTATIONS = {
-  call_api: NET, fetch_all: NET, batch_call: NET, describe_api: NET, api_types: NET, infer_schema: NET,
-  find_apply_targets: NET, search_datasets: NET, recommend_datasets: NET,
+  call_api: NET, fetch_all: NET, describe_api: NET,
+  find_apply_targets: NET, search_datasets: NET,
   export_data: { ro: false, dest: true, idem: false, open: true }, // 같은 이름 파일을 덮어쓸 수 있음
-  quota_status: R, list_keys: R, list_endpoints: R, explain_error: R, list_error_codes: R, apply_guide: R,
-  apply_setup: R, doctor: R, apply_status: { ro: true, open: true }, geo: R,
+  quota_status: R, list_keys: R, list_endpoints: R, explain_error: R,
+  apply_setup: R, doctor: R, apply_status: { ro: true, open: true },
   save_key: { ...W, dest: true }, remove_key: { ro: false, dest: true, idem: true, open: false },
   set_default_key: W, save_endpoint: { ...W, dest: true }, remove_endpoint: { ro: false, dest: true, idem: true, open: false },
   apply_login: { ro: false, dest: false, idem: true, open: true },
   apply_api: { ro: false, dest: false, idem: true, open: true }, // 이미 신청된 건은 건너뜀
   apply_apis: { ro: false, dest: false, idem: true, open: true },
   my_applications: { ro: true, open: true },
-  dataset_watch: { ro: false, dest: false, idem: true, open: true }, // 스냅샷 파일 갱신
 };
 
 export function annotationsFor(name) {
