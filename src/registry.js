@@ -11,6 +11,14 @@ export function defaultConfigPath() {
   return process.env.DATAGO_CONFIG || path.join(os.homedir(), '.datago-mcp.json');
 }
 
+// 객체 키로 쓰이는 이름 검증 (__proto__ 등으로 프로토타입을 오염시키지 못하게)
+export function assertSafeName(name, what = '이름') {
+  const n = String(name ?? '');
+  if (!n || n.length > 64 || /[\x00-\x1f]/.test(n)) throw new Error(`${what}은(는) 1~64자, 제어문자 없이 입력하세요.`);
+  if (['__proto__', 'prototype', 'constructor'].includes(n)) throw new Error(`${what} '${n}' 은(는) 사용할 수 없어요.`);
+  return n;
+}
+
 const BLANK = { keys: {}, defaultKey: null, endpoints: {} };
 
 export function createRegistry(file = defaultConfigPath()) {
@@ -31,7 +39,7 @@ export function createRegistry(file = defaultConfigPath()) {
     } catch (e) {
       // 손상된 파일을 빈 상태로 덮어쓰면 저장된 키가 전부 사라진다 → 백업 후 진행
       const bak = `${file}.corrupt-${Date.now()}.bak`;
-      try { fs.copyFileSync(file, bak); } catch { /* 백업 실패해도 계속 */ }
+      try { fs.copyFileSync(file, bak); fs.chmodSync(bak, 0o600); } catch { /* 백업 실패해도 계속 */ }
       console.error(`[datagokr-mcp] 설정 파일이 손상돼 백업했어요: ${bak} (${e.message})`);
       return structuredClone(BLANK);
     }
@@ -66,11 +74,13 @@ export function createRegistry(file = defaultConfigPath()) {
     },
     getKey(name) {
       const s = load();
-      const key = name ? s.keys[name] : (s.defaultKey ? s.keys[s.defaultKey] : null);
+      const pick = name || s.defaultKey;
+      const key = pick && Object.hasOwn(s.keys, pick) ? s.keys[pick] : null;
       return key ? key.key : null;
     },
     saveKey(name, key, note = '') {
       if (!name || !key) throw new Error('name 과 key 가 필요합니다.');
+      assertSafeName(name, '키 이름');
       const cleaned = String(key).trim();
       if (/\s/.test(cleaned)) throw new Error('키 중간에 공백/줄바꿈이 있어요. 포털에서 복사할 때 섞여 들어간 것 같으니 다시 확인하세요.');
       if (cleaned.length < 16) throw new Error(`키가 너무 짧아요(${cleaned.length}자). 포털 개발계정의 "일반 인증키"는 보통 64자 안팎이에요.`);
@@ -97,9 +107,10 @@ export function createRegistry(file = defaultConfigPath()) {
     },
     // ── 엔드포인트(별칭) ──
     listEndpoints() { return load().endpoints; },
-    getEndpoint(alias) { return load().endpoints[alias] || null; },
+    getEndpoint(alias) { const e = load().endpoints; return Object.hasOwn(e, alias) ? e[alias] : null; },
     saveEndpoint(alias, url, note = '', params = {}) {
       if (!alias || !url) throw new Error('alias 와 url 이 필요합니다.');
+      assertSafeName(alias, '별칭');
       const s = load();
       s.endpoints[alias] = { url: String(url), note: String(note), params: params || {} };
       save(s);

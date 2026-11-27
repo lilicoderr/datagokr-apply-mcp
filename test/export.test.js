@@ -88,3 +88,21 @@ test('export_data: 항목이 없으면 파일을 만들지 않음', async () => 
   assert.match(res.result.content[0].text, /저장할 항목이 없어요/);
   assert.equal(fs.existsSync(path.join(dir, 'out')), false);
 });
+
+test('safeFileName: Windows 예약 장치 이름과 끝의 점/공백', () => {
+  assert.equal(safeFileName('NUL', 'csv'), '_NUL.csv');
+  assert.equal(safeFileName('com1', 'json'), '_com1.json');
+  assert.equal(safeFileName('name. ', 'csv'), 'name.csv');
+  assert.equal(safeFileName('../../etc/passwd', 'csv'), 'etc_passwd.csv');
+});
+
+test('writeExport: 대상이 심볼릭 링크여도 폴더 밖 파일을 덮어쓰지 않음', (t) => {
+  const dir = tmpDir();
+  const outside = path.join(tmpDir(), 'victim.txt');
+  fs.writeFileSync(outside, 'ORIGINAL');
+  try { fs.symlinkSync(outside, path.join(dir, 'x.csv')); } catch { t.skip('symlink 권한 없음'); return; }
+  writeExport([{ a: 1 }], { format: 'csv', name: 'x', dir });
+  assert.equal(fs.readFileSync(outside, 'utf8'), 'ORIGINAL');
+  assert.match(fs.readFileSync(path.join(dir, 'x.csv'), 'utf8'), /a/);
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.tmp')), []);
+});

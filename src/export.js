@@ -39,8 +39,10 @@ export function toCsv(items) {
 
 export function safeFileName(name, ext) {
   const base = String(name || 'export').replace(/(?<=[^.])\.[A-Za-z0-9]+$/, '')
-    .replace(/[^\p{L}\p{N}._-]+/gu, '_').replace(/^[._]+/, '').slice(0, 80) || 'export';
-  return `${base}.${ext}`;
+    .replace(/[^\p{L}\p{N}._-]+/gu, '_').replace(/^[._]+/, '').replace(/[._ ]+$/, '').slice(0, 80) || 'export';
+  // Windows 예약 장치 이름(CON, NUL, COM1 ...)은 파일이 아니라 장치로 열린다
+  const safe = /^(con|prn|aux|nul|com\d|lpt\d)$/i.test(base.split('.')[0]) ? `_${base}` : base;
+  return `${safe}.${ext}`;
 }
 
 export function writeExport(items, { format = 'csv', name, dir = defaultExportDir() } = {}) {
@@ -50,6 +52,14 @@ export function writeExport(items, { format = 'csv', name, dir = defaultExportDi
   if (path.relative(dir, file).startsWith('..')) throw new Error('내보내기 폴더 밖에는 저장할 수 없어요.');
   // CSV 는 BOM 을 붙여야 엑셀에서 한글이 깨지지 않는다
   const body = format === 'csv' ? `﻿${toCsv(items)}` : JSON.stringify(items, null, 2) + '\n';
-  fs.writeFileSync(file, body, 'utf8');
+  // 대상이 심볼릭 링크면 따라가서 폴더 밖을 덮어쓸 수 있다 → 임시 파일에 쓰고 rename (링크 자체를 교체)
+  const tmp = path.join(dir, `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`);
+  try {
+    fs.writeFileSync(tmp, body, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* 이미 없음 */ }
+    throw e;
+  }
   return { file, rows: items.length, bytes: Buffer.byteLength(body) };
 }
