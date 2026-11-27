@@ -22,30 +22,30 @@ datagokr MCP 도구를 아래 순서로 쓴다. 추측으로 호출하지 말고
 - 필수 파라미터를 빠뜨리면 `resultCode 11`, 형식이 틀리면 `10`, 주소가 틀리면 `12` 가 난다.
 - 상세기능이 여러 개면 요청주소는 첫 기능 기준이다. 서비스URL 뒤에 오퍼레이션명을 붙여 다른 기능을 부른다.
 
-## 3. 키 확보
+## 3. 키 확보 (활용신청 → 키 자동 저장)
 
 - `list_keys` 로 저장된 키가 있는지 본다. 있으면 4번으로.
-- 없으면 활용신청이 필요하다 (`playwright-core` 설치 시 자동화 가능):
+- 없으면 활용신청이 필요하다 (`playwright-core` 설치 시 자동화). 순서:
   1. `apply_status` — 로그인 확인
   2. 안 됐으면 `apply_login` 을 부르고 **사용자에게 "뜬 창에서 로그인해 달라"고 안내**한 뒤, 잠시 후 `apply_status` 로 확인. 비밀번호를 대신 입력하거나 요구하지 않는다.
-  3. `apply_api { idOrUrl }` (여러 개면 `apply_apis { ids }`). 대상이 모호하면 `find_apply_targets { keyword }`.
-  4. 자동승인 API 는 보통 1~2시간 뒤부터 호출 가능. `my_applications` 로 승인 여부 확인.
-- 발급된 인증키는 사용자가 포털 마이페이지 > 개발계정에서 복사해 알려주면 `save_key` 로 저장한다. (Encoding/Decoding 아무거나 가능)
+  3. `find_apply_targets { keyword }` 로 자동승인 REST API 를 고르고, `describe_api` 로 명세를 확인한다.
+  4. `apply_api { idOrUrl }` — 여러 개면 `apply_api { ids: [...] }` 로 **한 번에**. 신청이 성공하면 마이페이지 > 개발계정의 일반 인증키(Encoding/Decoding)를 **자동으로 읽어 저장**한다. 키 원문은 출력되지 않는다(마스킹).
+  5. 키 저장이 실패했으면 `apply_get_key` 로 다시 시도한다. 그래도 안 되면 사용자가 마이페이지에서 복사해 `save_key` 로 저장한다.
+- 자동승인 API 는 보통 1~2시간 뒤부터 호출 가능하다. `my_applications` 로 승인 여부 확인.
 
 ## 4. 호출
 
-- `call_api { url 또는 endpoint, params }` — 키는 자동으로 붙는다. **`serviceKey` 를 params 에 넣지 않는다.**
+- `call_api { url 또는 endpoint, params }` — 키는 자동으로 붙는다. **`serviceKey` 를 params 에 넣지 않는다.** (GET 전용)
+- 서비스 키는 기본적으로 공공데이터 호스트(data.go.kr, *.go.kr, *.or.kr)로만 전송된다. 다른 호스트는 `DATAGO_ALLOWED_HOSTS` 로 허용해야 한다.
 - 목록이 길면 `itemsOnly: true` (토큰 절약) 또는 `fetch_all { maxPages }` (전 페이지 순회).
 - 수백 건 이상이면 컨텍스트에 싣지 말고 `export_data { ..., format: "csv" }` 로 파일에 저장한 뒤 경로만 알려준다.
-- 여러 지역·월처럼 params 만 바꿔 반복하면 `batch_call { paramsList }` (호출 간격 자동, 최대 50건).
 - 같은 조회를 반복할 가능성이 있으면 `call_api` 에 `cacheSeconds` 를 줘서 트래픽을 아낀다.
-- 앱 코드에 붙일 때는 `api_types { idOrUrl }` 로 TypeScript 타입을 받아 쓴다.
 - 자주 쓰는 주소는 `save_endpoint` 로 별칭 등록해 두면 다음부터 `endpoint` 로 부른다.
 - 대량 호출 전 `quota_status` 로 오늘 호출량을 확인한다 (개발계정은 보통 일 1,000회).
 
 ## 에러 해석
 
-응답 요약의 `도움말` 필드가 조치 방법을 알려준다. 더 필요하면 `explain_error { code }`.
+응답 `summary.hint` 필드가 조치 방법을 알려준다. 더 필요하면 `explain_error { code }`.
 
 | resultCode | 의미 | 할 일 |
 |---|---|---|
@@ -55,14 +55,9 @@ datagokr MCP 도구를 아래 순서로 쓴다. 추측으로 호출하지 말고
 | 22 | 트래픽 초과 | 내일 재시도, 증설 신청 |
 | 30 | 키 미등록 | 승인 대기·키 오타 확인 (인코딩은 자동 보정됨) |
 
-## v1.3 도구
-
-- `recommend_datasets` — 자연어로 설명하면 후보를 점수순으로 추천 (그다음 `describe_api`)
-- `infer_schema` — 실제 응답 표본으로 필드 타입·결측률 확인 (호출 1회 소모)
-- 로컬/사설 주소는 기본 차단 (`DATAGO_ALLOW_LOCAL=1`), 도메인 제한은 `DATAGO_ALLOWED_HOSTS`
-
 ## 하지 말 것
 
 - 사용자의 포털 비밀번호를 묻거나 저장하지 않는다. 로그인은 사용자가 창에서 직접 한다.
 - 키 전체를 응답/로그에 그대로 출력하지 않는다 (`list_keys` 는 마스킹된다).
 - 일괄 신청은 사용자가 요청한 범위로만 한다.
+- 키 원문을 응답에 옮겨 적지 않는다 (`apply_api`/`apply_get_key` 는 마스킹된 값만 돌려준다).

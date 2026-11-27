@@ -8,11 +8,11 @@ Contents: [1. Public holidays](#1-public-holidays-for-a-calendar-app) · [2. Air
 
 ## 1. Public holidays for a calendar app
 
-> "Find the Korean public-holiday API, get 2026's holidays and give me a TypeScript type for the response."
+> "Find the Korean public-holiday API, apply for it, and get 2026's holidays."
 
-1. `recommend_datasets { query: "공휴일 특일 정보" }` — ranked candidates (the KASI 특일 정보 API, id `15012690`, is usually first).
+1. `search_datasets { query: "공휴일 특일 정보" }` — candidates (the KASI 특일 정보 API, id `15012690`, is usually first).
 2. `describe_api { idOrUrl: "15012690" }` — shows the `getRestDeInfo` operation, required `solYear`, optional `solMonth`.
-3. `api_types { idOrUrl: "15012690" }` — copy-paste TypeScript interfaces.
+3. No key yet? `apply_status` → `apply_login` (once) → `apply_api { idOrUrl: "15012690" }` — applies and saves the key automatically.
 4. `save_endpoint { alias: "holidays", url: "…/SpcdeInfoService/getRestDeInfo", params: { numOfRows: 50 } }`
 5. `call_api { endpoint: "holidays", params: { solYear: 2026 }, itemsOnly: true, cacheSeconds: 86400 }`
 
@@ -23,10 +23,7 @@ Tip: holidays change rarely, so `cacheSeconds` saves quota.
 > "What is PM2.5 in Seoul right now? Use my saved key."
 
 1. `search_datasets { query: "에어코리아 대기오염정보" }` → `describe_api` on the 측정소별 실시간 측정정보 조회 API.
-2. `infer_schema { endpoint: "air", params: { stationName: "종로구", dataTerm: "DAILY" } }` — shows that `pm25Value` is a number stored as a string and that `-` marks missing values.
-3. `call_api { …, itemsOnly: true, maxItems: 1 }` for the latest row.
-
-Why `infer_schema`: sensor APIs return `-` for outages; the schema's `type` shows `integer-string|string`, a hint to handle it in code.
+2. `call_api { …, itemsOnly: true, maxItems: 1 }` for the latest row. Sensor APIs return `-` for outages, so handle that in code.
 
 ## 3. Bus arrival times
 
@@ -54,7 +51,7 @@ Cells starting with `=`, `+`, `-` or `@` are prefixed with `'` to prevent formul
 > "Collect yesterday's data without burning the 1,000-call daily quota."
 
 1. `quota_status` — today's usage per key.
-2. `batch_call { endpoint: "daily", paramsList: [...], intervalMs: 300, stopOnError: true }` — spaced calls; it stops on the first failure (resultCode `22` means the quota is exhausted).
+2. Call `call_api` once per param set (or `fetch_all` / `export_data` for paged results); resultCode `22` means the quota is exhausted.
 3. Use `cacheSeconds` for lookups that repeat, and the `datago://usage` MCP resource to watch usage without spending a tool call.
 
 Pair it with the `find-and-call-api` MCP prompt to let a new teammate discover and call an API without learning the tool names.
