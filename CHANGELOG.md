@@ -2,6 +2,31 @@
 
 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식, [SemVer](https://semver.org/lang/ko/) 를 따릅니다.
 
+## [2.1.0]
+
+핵심 흐름(검색 → 명세 → 신청 → 키 → 호출)의 견고성·안내를 다듬었습니다. 새 도구는 없습니다(21개 그대로).
+
+> **여전히 미검증:** 활용신청 후 마이페이지에서 인증키를 자동으로 읽는 부분은 로그인된 실제 포털 페이지로 확인하지 못했습니다(가짜 키 fixture 로만 테스트). 실패하면 저장하지 않고 `save_key` 로 직접 저장하라고 안내합니다.
+
+### 추가
+- 실제 공개 페이지(검색 결과·상세·기능별 조각·404·빈 검색)를 정리한 fixture(`test/fixtures/real/`)와 회귀 테스트
+- `describe_api` 의 `operation` 인자: 상세기능이 여러 개인 API 의 기능별 요청주소/변수/응답을 포털 페이지가 쓰는 공개 조회 경로로 읽음
+- `call_api`/`fetch_all`/`export_data`: `describe_api` 로 명세를 본 뒤 필수 변수가 빠지면 **호출하지 않고**(트래픽 절약) `summary.missing` 반환. `skipValidation: true` 로 우회. `describe_api { saveAs }` 로 저장한 별칭에는 필수 변수 목록이 함께 저장됨. 명세에 없는 변수는 `warnings`
+- 모든 도구 실패에 한국어 `message`/`오류:` 문장과 영어 `hint` (`error`+`hint` 구조화 출력). `call_api` 요약은 `hint`(영어)+`advice`(한국어)
+- 모든 `apply_*` 결과에 `next`(다음에 부를 도구)와 영어 `hint`. `my_applications` 도 구조화 출력
+- `doctor`: 포털 명세 파서가 현재 레이아웃을 읽는지(`portal`), `DATAGO_ALLOWED_HOSTS` 확장(`hosts`) 점검
+- 배포물 테스트(`npm pack` 파일 목록, CHANGELOG/버전 일치), SKILL.md·README 가 언급한 도구가 실제 `server.tools` 와 일치하는지 테스트
+
+### 수정
+- `&#034;` 같은 숫자 문자 참조를 디코딩(이중 디코딩은 방지), 검색 결과 0건을 `null` 이 아닌 0 으로
+- 포털 페이지 가져오기 오류(404/5xx/네트워크/타임아웃)를 한국어 안내 + 영어 hint 로 구분. LINK/비REST 는 `reason: "not_rest"`
+- 200 이어도 본문이 HTML(게이트웨이/점검 페이지)이면 성공으로 보지 않음. 코드 없는 평문/XML 문구(`SERVICE KEY IS NOT REGISTERED` 등)를 표준 resultCode 로 매핑, `code: 200`·서울 열린데이터 코드(INFO-200 등) 해석
+- 배열 파라미터는 키 반복, 객체는 JSON 문자열로 인코딩(`[object Object]` 방지). `params` 안의 `serviceKey` 가 쿼리에 두 번 붙던 문제
+- `export_data` 가 잘못된 `format` 을 API 호출 뒤가 아니라 호출 전에 거부
+
+### 문서
+- README(en/ko): npm 레지스트리 미배포 상태와 tarball 설치법, 흐름 섹션 갱신
+
 ## [2.0.1]
 
 ### 수정

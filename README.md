@@ -80,6 +80,19 @@ node bin/server.js doctor          # environment check (no install needed)
 node bin/server.js doctor --fix    # also repairs what it safely can
 ```
 
+### Other ways to run it
+
+The package is **not published to the npm registry yet**, so `npx datagokr-apply-mcp` will not resolve until it is. Today you can:
+
+```bash
+npm pack                                   # builds datagokr-apply-mcp-<version>.tgz (runtime deps: none)
+npm install -g ./datagokr-apply-mcp-<version>.tgz
+datagokr-apply-mcp --version               # then use "datagokr-apply-mcp" as the MCP command
+# or, without installing globally: npx --package ./datagokr-apply-mcp-<version>.tgz datagokr-apply-mcp
+```
+
+The packed tarball contains only `bin/`, `src/`, `skills/`, `docs/` and the README/CHANGELOG/LICENSE (no tests, no keys). `playwright-core` stays optional (auto-apply only).
+
 ### Any client: `--print-config`
 
 ```bash

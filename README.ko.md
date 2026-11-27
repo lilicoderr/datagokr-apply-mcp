@@ -76,6 +76,16 @@ cd datagokr-apply-mcp
 node bin/server.js doctor        # 환경 점검 (의존성 설치 불필요)
 ```
 
+### 설치 방법 (npm 레지스트리 미배포)
+
+아직 npm 레지스트리에 올리지 않았으므로 `npx datagokr-apply-mcp` 는 동작하지 않아요. 지금은:
+
+```bash
+npm pack                                          # datagokr-apply-mcp-<버전>.tgz 생성 (런타임 의존성 없음)
+npm install -g ./datagokr-apply-mcp-<버전>.tgz
+datagokr-apply-mcp --version                      # 이후 MCP 명령으로 "datagokr-apply-mcp" 사용
+```
+
 ### Claude Code
 
 ```bash
