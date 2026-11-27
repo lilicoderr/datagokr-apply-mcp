@@ -9,6 +9,7 @@ import { fetchApiSpec, buildExampleParams, searchDatasets, findApplyTargets } fr
 import { cacheKey } from './cache.js';
 import { writeExport } from './export.js';
 import { toTypeScript } from './hints.js';
+import { assertSafeTarget } from './security.js';
 import { createBreaker } from './breaker.js';
 import { inferSchema } from './schema.js';
 import { recommendDatasets } from './recommend.js';
@@ -41,6 +42,7 @@ function resolveCall(args, registry) {
     params = { ...ep.params, ...params };
   }
   if (!url) throw new Error('url 또는 endpoint 가 필요합니다.');
+  assertSafeTarget(url);
   const serviceKey = args.serviceKey || registry?.getKey(args.keyName);
   if (!serviceKey) {
     throw new Error(args.keyName

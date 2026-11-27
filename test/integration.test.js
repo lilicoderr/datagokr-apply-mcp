@@ -11,6 +11,7 @@ import { createRegistry } from '../src/registry.js';
 import { registerTools } from '../src/tools.js';
 
 const fx = (n) => fs.readFileSync(new URL(`./fixtures/api/${n}`, import.meta.url), 'utf8');
+process.env.DATAGO_ALLOW_LOCAL = '1'; // 로컬 fixture 서버 허용
 const KEY = 'TESTKEY0123456789abcdefTESTKEY0123456789==';
 
 async function withEnv(fn) {
