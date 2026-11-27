@@ -9,6 +9,7 @@ import { fetchApiSpec, buildExampleParams, searchDatasets, findApplyTargets } fr
 import { cacheKey } from './cache.js';
 import { writeExport } from './export.js';
 import { toTypeScript } from './hints.js';
+import { recommendDatasets } from './recommend.js';
 
 export const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
 
@@ -335,6 +336,19 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
     async () => pretty(RESULT_CODES));
   server.tool('apply_guide', { description: '오픈API 활용신청(키 발급) 방법 안내. (로그인 필요, 자동화 불가)' },
     async () => text(APPLY_GUIDE));
+
+  server.tool('recommend_datasets', {
+    description: '자연어로 원하는 데이터를 설명하면(예: "내 동네 미세먼지 알려주는 API") 질의를 키워드로 나눠 포털을 여러 번 검색하고 '
+      + '제목 일치·활용신청 수·JSON 지원 등으로 점수를 매겨 상위 후보를 추천한다. 다음은 describe_api.',
+    inputSchema: { type: 'object', required: ['query'], properties: {
+      query: { type: 'string', description: '원하는 데이터를 문장으로' },
+      limit: { type: 'number', description: '추천 개수 (기본 5, 최대 10)' },
+    } },
+  }, async (a) => {
+    const r = await recommendDatasets(a.query, { limit: Math.min(a.limit || 5, 10), fetchImpl });
+    if (!r.recommendations.length) return text(`'${a.query}' 에 맞는 API 를 찾지 못했어요. 더 짧은 키워드로 search_datasets 를 써 보세요.`);
+    return pretty({ ...r, 다음: '상위 항목의 id 로 describe_api 를 호출하세요.' });
+  });
 
   // ── 데이터셋 검색 (베스트 에포트: 포털 공개 검색) ──
   server.tool('search_datasets', {
