@@ -19,6 +19,8 @@ jobs:
         run: node --check bin/server.js && node --check src/tools.js
       - name: Run tests
         run: node --test
+      - name: Self-check (install guide verification)
+        run: npm run selfcheck
       - name: Doctor smoke test
         run: node bin/server.js doctor || true
 

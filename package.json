@@ -11,7 +11,8 @@
     "start": "node bin/server.js",
     "test": "node --test",
     "docs:errors": "node scripts/gen-error-catalog.js",
-    "bench": "node scripts/bench.js"
+    "bench": "node scripts/bench.js",
+    "selfcheck": "node scripts/selfcheck.js"
   },
   "engines": {
     "node": ">=20"
