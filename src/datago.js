@@ -8,6 +8,7 @@
 //      → 공통 resultCode 를 해석해 사람이 읽을 메시지로.
 
 import { parseXml, findFirst } from './xml.js';
+import { CircuitOpenError } from './breaker.js';
 
 // data.go.kr 공통 결과 코드 (OpenAPI 표준)
 export const RESULT_CODES = {
@@ -149,9 +150,11 @@ export function describeNetworkError(e, timeoutMs) {
  */
 export async function callApi({
   url, params = {}, serviceKey, method = 'GET', body, timeoutMs = 15000, fetchImpl = DEFAULT_FETCH,
-  retries = 2, retryDelayMs = 500, sleep = DEFAULT_SLEEP, logger,
+  retries = 2, retryDelayMs = 500, sleep = DEFAULT_SLEEP, logger, breaker,
 }) {
   if (!url) throw new Error('url 이 필요합니다.');
+  const wait = breaker?.check(url) || 0;
+  if (wait > 0) throw new CircuitOpenError(new URL(url).host, wait);
   let attempts = 0;
 
   async function once(encodeKey) {
@@ -191,10 +194,12 @@ export async function callApi({
       attempts++;
       try {
         const r = await once(encodeKey);
+        if (isRetryable(r)) breaker?.failure(url); else breaker?.success(url);
         if (i < retries && isRetryable(r)) { await sleep(backoffMs(i, retryDelayMs)); continue; }
         return r;
       } catch (e) {
         lastErr = e;
+        breaker?.failure(url);
         if (i < retries) await sleep(backoffMs(i, retryDelayMs));
       }
     }

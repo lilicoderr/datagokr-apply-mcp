@@ -3,12 +3,13 @@
 //   registerTools(server, { registry, fetchImpl }) 로 서버에 도구를 붙인다.
 //   (fetchImpl 주입으로 테스트에서 네트워크 없이 검증)
 
-import { callApi, describeResultCode, isEncodedKey, RESULT_CODES } from './datago.js';
+import { callApi as callApiRaw, describeResultCode, isEncodedKey, RESULT_CODES } from './datago.js';
 import { extractItems, hasMore } from './items.js';
 import { fetchApiSpec, buildExampleParams, searchDatasets, findApplyTargets } from './portal.js';
 import { cacheKey } from './cache.js';
 import { writeExport } from './export.js';
 import { toTypeScript } from './hints.js';
+import { createBreaker } from './breaker.js';
 import { inferSchema } from './schema.js';
 import { recommendDatasets } from './recommend.js';
 
@@ -65,7 +66,8 @@ function summarizeResult(r) {
   return summary;
 }
 
-export function registerTools(server, { registry, fetchImpl, usage, sleep, logger, cache, exportDir } = {}) {
+export function registerTools(server, { registry, fetchImpl, usage, sleep, logger, cache, exportDir, breaker = createBreaker() } = {}) {
+  const callApi = (opts) => callApiRaw({ breaker, ...opts });
   // fetch_all / export_data 공용: pageNo 를 올리며 항목을 모은다
   async function collectPages(args) {
     const { url, params, serviceKey, keyName } = resolveCall(args, registry);
