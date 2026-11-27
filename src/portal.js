@@ -8,13 +8,16 @@
 
 const BASE = 'https://www.data.go.kr';
 
-const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&nbsp;': ' ' };
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+function fromCodePoint(n) { try { return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : ''; } catch { return ''; } }
 
 export function cleanText(s) {
   return String(s ?? '')
     .replace(/<\/?(?:em|b|i|u|mark|span|strong|a)\b[^>]*>/gi, '') // 인라인 강조는 단어를 쪼개지 않게 그냥 제거
     .replace(/<[^>]*>/g, ' ')
-    .replace(/&(?:amp|lt|gt|quot|nbsp|#39);/g, (m) => ENTITIES[m])
+    // 이름·10진·16진 엔티티를 한 번만 디코딩(&#034; 같은 포털 표기 포함, 이중 디코딩 방지)
+    .replace(/&(?:(amp|lt|gt|quot|apos|nbsp)|#(\d+)|#x([0-9a-f]+));/gi,
+      (m, name, dec, hex) => (name ? ENTITIES[name.toLowerCase()] : fromCodePoint(dec ? Number(dec) : parseInt(hex, 16))))
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -60,6 +63,11 @@ export function parseOpenApiPage(html) {
   const response = tables[1] ? parseParamTable(tables[1]) : [];
 
   const endpoint = info['요청주소'] || null;
+  const detailPk = (text.match(/id="publicDataDetailPk"[^>]*value="([^"]+)"/) || [])[1] || null;
+  const apiType = info['API 유형'] || null;
+  const found = Boolean(title && (endpoint || request.length));
+  // 못 읽은 이유를 구분해 호출부가 정확한 안내를 하게 한다
+  const reason = found ? null : (apiType && !/REST/i.test(apiType) ? 'not_rest' : 'no_spec');
   const serviceUrl = info['서비스 URL'] || null;
   return {
     title,
@@ -67,7 +75,8 @@ export function parseOpenApiPage(html) {
     description: info['설명'] || null,
     updated: info['수정일'] || info['최종수정일'] || info['최종 수정일'] || null,
     format: info['데이터 포맷'] || null,
-    apiType: info['API 유형'] || null,
+    apiType,
+    detailPk,
     reviewType: info['심의유형'] || null,
     cost: info['비용부과유무'] || null,
     applications: info['활용신청 수'] || null,
@@ -78,7 +87,8 @@ export function parseOpenApiPage(html) {
     operations: parseOperations(text),
     request: request.filter((r) => !/^service\s*key$/i.test(r.name)), // 서비스키는 서버가 자동 부착
     response,
-    found: Boolean(title && (endpoint || request.length)),
+    found,
+    reason,
   };
 }
 
@@ -96,7 +106,8 @@ export function buildExampleParams(request = []) {
 //   결과 카드(.in-result-item): 분류 배지, 형식(XML/JSON), 제목 링크, 요약, 제공기관/수정일/조회수/활용신청/키워드
 export function parseSearchResults(html) {
   const text = String(html || '');
-  const total = Number((text.match(/전체\s*<span>\s*([\d,]+)\s*건/) || [])[1]?.replace(/,/g, '')) || null;
+  const totalM = text.match(/전체\s*<span>\s*([\d,]+)\s*건/);
+  const total = totalM ? Number(totalM[1].replace(/,/g, '')) : null;
   const starts = [...text.matchAll(/<div class="in-result-item">/g)].map((m) => m.index);
   const items = [];
   starts.forEach((s, i) => {
