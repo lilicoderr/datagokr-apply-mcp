@@ -21,3 +21,15 @@ jobs:
         run: node --test
       - name: Doctor smoke test
         run: node bin/server.js doctor || true
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test with coverage
+        run: |
+          node --test --experimental-test-coverage 2>&1 | tee coverage.txt
+          { echo '### Test coverage'; echo '```'; sed -n '/start of coverage report/,/end of coverage report/p' coverage.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

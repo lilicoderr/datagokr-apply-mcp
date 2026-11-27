@@ -1,0 +1,31 @@
+name: Security
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  push:
+    branches: [master]
+    paths: ['package.json', 'package-lock.json', '.github/workflows/security.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: npm audit (production deps, high+)
+        run: npm audit --omit=dev --audit-level=high
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan history for committed credentials
+        run: |
+          if git grep -nIE '(serviceKey=[A-Za-z0-9%]{40,}|ghp_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' $(git rev-list --all) -- . ':!test' ':!*.md'; then
+            echo '::error::possible credential committed'; exit 1
+          fi
