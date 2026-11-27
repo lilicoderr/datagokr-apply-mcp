@@ -63,7 +63,7 @@ export function isDefaultAllowedHost(h) {
 export async function assertSafeTargetResolved(rawUrl, env = process.env, lookup = dns.lookup) {
   const u = assertSafeTarget(rawUrl, env);
   if (env.DATAGO_ALLOW_LOCAL === '1') return u;
-  const host = u.hostname.replace(/^[|]$/g, '');
+  const host = u.hostname.replace(/^\[|\]$/g, '');
   if (net.isIP(host)) return u;
   let addrs;
   try { addrs = await lookup(host, { all: true }); } catch (e) {

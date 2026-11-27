@@ -58,3 +58,8 @@ test('DNS resolution: any private address rejects the call', async () => {
   await assert.rejects(assertSafeTargetResolved('https://apis.data.go.kr/x', {}, loop6), /내부\/로컬/);
   await assert.doesNotReject(assertSafeTargetResolved('http://127.0.0.1/x', { DATAGO_ALLOW_LOCAL: '1' }, mixed));
 });
+
+test('DNS resolution: IPv6 literal brackets are stripped and the literal is not looked up', async () => {
+  const never = async () => { throw new Error('lookup must not run for IP literals'); };
+  await assert.doesNotReject(assertSafeTargetResolved('https://[2001:db8::1]/x', { DATAGO_ALLOWED_HOSTS: '[2001:db8::1]' }, never));
+});
