@@ -206,7 +206,13 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
   }, async (a) => {
     const r = await findApplyTargets(a.keyword, { limit: Math.min(a.limit || 10, 30), fetchImpl });
     if (!r.targets.length) {
-      return text(`'${a.keyword}' 로 검색된 ${r.scanned}건 중 개발단계 자동승인 REST API 가 없어요. 다른 키워드로 시도하세요.`);
+      return structured({
+        keyword: r.keyword, scanned: r.scanned, count: 0, targets: [],
+        message: r.scanned
+          ? `'${a.keyword}' 로 검색된 ${r.scanned}건 중 개발단계 자동승인 REST API 가 없어요. 더 일반적인 키워드로 시도하거나 search_datasets 로 직접 고르세요.`
+          : `'${a.keyword}' 검색 결과가 없어요. 철자를 확인하거나 더 짧은 키워드로 시도하세요.`,
+        hint: 'No auto-approval REST targets; broaden the keyword or use search_datasets.',
+      });
     }
     return pretty({
       keyword: r.keyword, scanned: r.scanned, count: r.count,
@@ -324,9 +330,13 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
         return pretty({ query: a.query, page, total: r.total, count: r.items.length, items: r.items,
           next: '마음에 드는 항목의 id 로 describe_api 를 호출해 요청주소/파라미터를 확인하세요.' });
       }
-      return text(`'${a.query}' 검색 결과가 없거나 파싱하지 못했어요. 포털에서 직접 확인: ${portalUrl}`);
+      return structured({ query: a.query, page, total: r.total ?? 0, count: 0, items: [], portalUrl,
+        message: r.total === 0 ? `'${a.query}' 검색 결과가 없어요. 더 짧거나 일반적인 키워드로 시도하세요.`
+          : `'${a.query}' 검색 결과를 읽지 못했어요(페이지 번호 초과이거나 포털 구조 변경). 포털에서 직접 확인: ${portalUrl}`,
+        hint: r.total === 0 ? 'No results; try a shorter keyword.' : 'Results unparsed (page beyond last, or portal layout changed); open portalUrl.' });
     } catch (e) {
-      return text(`검색 요청 실패: ${e.message}\n포털에서 직접 확인: https://www.data.go.kr/tcs/dss/selectDataSetList.do?keyword=${encodeURIComponent(a.query)}`);
+      return structured({ query: a.query, page, count: 0, items: [], portalUrl, message: `검색 요청 실패: ${e.message}`,
+        hint: e.hint || 'Search request failed; retry or open portalUrl.' });
     }
   });
   annotateTools(server);
