@@ -1,12 +1,21 @@
 {
   "name": "datagokr-apply-mcp",
-  "version": "1.3.0",
-  "private": true,
+  "version": "2.0.0",
+  "private": false,
   "type": "module",
   "description": "공공데이터포털(data.go.kr) 오픈API MCP 서버 — API 호출·키 관리에 더해, 브라우저 자동화로 활용신청(키 발급)까지 자동화",
   "bin": {
     "datagokr-apply-mcp": "bin/server.js"
   },
+  "files": [
+    "bin/",
+    "src/",
+    "skills/",
+    "docs/",
+    "config.example.json",
+    "README.ko.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "start": "node bin/server.js",
     "test": "node --test",
@@ -43,5 +52,8 @@
   "devDependencies": {
     "@types/node": "^22.20.7",
     "typescript": "^5.6.3"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

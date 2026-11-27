@@ -2,6 +2,35 @@
 
 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식, [SemVer](https://semver.org/lang/ko/) 를 따릅니다.
 
+## [2.0.0]
+
+핵심 흐름에 집중: **검색 → 명세 확인 → 활용신청 → 키 자동 저장 → 호출**. 호환성이 깨지는 변경입니다.
+
+### 추가
+- 인증키 자동 수집: 활용신청 성공 뒤 로그인 세션으로 마이페이지 > 개발계정의 일반 인증키(Encoding/Decoding)를 읽어 키 저장소에 저장. 모든 출력·로그에는 마스킹. HTML 추출은 순수 함수(`src/keyextract.js`)이며 가짜 키 픽스처로 테스트
+- `apply_get_key` 도구 (수동 재시도)
+- 서비스 키 전송 허용 호스트 기본값: `data.go.kr`, `*.go.kr`, `*.or.kr` (`DATAGO_ALLOWED_HOSTS` 로 대체). 호스트명 DNS 해석 후 사설/루프백/링크로컬 주소면 거부, 리다이렉트 미추종
+- `package.json` 배포 준비: `private: false`, `files` 화이트리스트 (npx 로 실행 가능). `npm publish` 는 하지 않음
+
+### Removed
+- `geo` 도구(`src/geo*.js`, `src/address.js`), `dataset_watch`(`DATAGO_WATCH`), `api_types`, `infer_schema`, `batch_call`, `recommend_datasets`
+- HTTP 전송(`--http`, `DATAGO_HTTP_TOKEN`) — stdio 만 지원 (진행률 알림·취소는 유지)
+- `apply_guide` (수동 절차는 `apply_setup`/`doctor` 안내로 흡수)
+- `list_error_codes` → `explain_error` 에 병합 (code 생략 시 전체 표)
+- `apply_apis` → `apply_api` 에 병합 (`idOrUrl` 문자열 또는 `ids` 배열)
+- `call_api` 의 `method` 인자 (포털 REST 는 GET, readOnlyHint 유지)
+- 도구 29개 → 21개
+
+### 수정
+- "자동화 불가" 등 낡고 모순된 안내문, `apply_api` 를 API 마다 한 번 호출하라는 설명
+- 브라우저 User-Agent 위장 제거 (Playwright 기본값 사용)
+- 활용목적 입력/동의/제출이 실패해도 성공으로 기록하던 문제 → 실패 단계를 `failedStep` 으로 알리고 `ok:false`
+- outputSchema 를 선언한 모든 도구가 모든 성공 경로에서 `structuredContent` 반환 (`export_data` 빈 결과 포함)
+- structuredContent 키를 영어로 통일: `summary`, `meaning`, `message`, `hint`, `items`, `count`, `pages`, `truncated`, `savedTo`, `rows`, `bytes` 등 (한국어 메시지 본문은 유지)
+
+### 알려진 한계
+- 실제 로그인 상태의 포털에서 인증키 자동 수집은 아직 검증되지 않았습니다 (픽스처 테스트만).
+
 ## [1.3.0]
 
 ### 추가
