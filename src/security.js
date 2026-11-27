@@ -10,33 +10,46 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
 
-function isPrivateIPv4(h) {
-  const [a, b] = h.split('.').map(Number);
-  return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
-    || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
-}
+// 내부·특수 용도 대역. BlockList 는 IPv4-mapped(::ffff:a.b.c.d)를 IPv4 규칙으로 검사하고, 표기법(압축/전개/16진)에 의존하지 않는다.
+const BLOCKED = new net.BlockList();
+for (const [addr, bits] of /** @type {[string, number][]} */ ([
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
+  ['192.0.0.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 4], ['240.0.0.0', 4],
+])) BLOCKED.addSubnet(addr, bits, 'ipv4');
+for (const [addr, bits] of /** @type {[string, number][]} */ ([
+  ['::', 96], ['::ffff:0:0:0', 96], ['64:ff9b::', 96], ['64:ff9b:1::', 48], ['100::', 64], ['2002::', 16], // IPv4 를 감싸는 형태 포함
+  ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8],
+])) BLOCKED.addSubnet(addr, bits, 'ipv6');
 
 export function isPrivateHost(hostname) {
-  const h = String(hostname).toLowerCase().replace(/^\[|\]$/g, '');
+  const h = String(hostname).toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true;
   const v = net.isIP(h);
-  if (v === 4) return isPrivateIPv4(h);
-  if (v === 6) {
-    const mapped = h.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (mapped) return isPrivateIPv4(mapped[1]);
-    const hex = h.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/); // URL 정규화 결과 형태
-    if (hex) {
-      const n = (parseInt(hex[1], 16) << 16) | parseInt(hex[2], 16);
-      return isPrivateIPv4([n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.'));
-    }
-    return h === '::1' || h === '::' || /^f[cd]/.test(h) || /^fe[89ab]/.test(h);
-  }
-  return false;
+  return v ? BLOCKED.check(h, v === 4 ? 'ipv4' : 'ipv6') : false;
 }
+
+// 키가 응답·오류·로그에 되비칠 수 있는 모든 표기(원문/디코딩/인코딩/이중 인코딩/JSON 의 \/ )
+export function keyVariants(key) {
+  const raw = String(key || '');
+  if (raw.length < 8) return [];
+  let dec = raw;
+  try { dec = decodeURIComponent(raw); } catch { /* 디코딩 불가면 원문만 */ }
+  const base = [raw, dec, encodeURIComponent(dec), encodeURIComponent(encodeURIComponent(dec))];
+  const all = base.flatMap((v) => [v, v.replace(/%[0-9A-F]{2}/g, (m) => m.toLowerCase()), v.replaceAll('/', '\\/')]);
+  return [...new Set(all)].sort((a, b) => b.length - a.length);
+}
+
+export function scrubKey(text, key) {
+  let out = String(text);
+  for (const v of keyVariants(key)) out = out.split(v).join('***');
+  return out;
+}
+
+const maskQueryKey = (s) => String(s).replace(/(servicekey=)[^&#\s]*/gi, '$1***');
 
 export function assertSafeTarget(rawUrl, env = process.env) {
   let u;
-  try { u = new URL(rawUrl); } catch { throw new Error(`URL 형식이 올바르지 않아요: ${rawUrl}`); }
+  try { u = new URL(rawUrl); } catch { throw new Error(`URL 형식이 올바르지 않아요: ${maskQueryKey(rawUrl)}`); }
   if (!['http:', 'https:'].includes(u.protocol)) throw new Error(`http/https URL 만 호출할 수 있어요 (받은 값: ${u.protocol})`);
   if (u.username || u.password) throw new Error('URL 에 계정 정보(user:pass@)를 넣을 수 없어요.');
   if (env.DATAGO_ALLOW_LOCAL === '1') return u;

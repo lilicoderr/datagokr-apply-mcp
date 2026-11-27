@@ -9,6 +9,8 @@
 
 import { parseXml, findFirst } from './xml.js';
 import { CircuitOpenError } from './breaker.js';
+import { pinnedFetch } from './safefetch.js';
+import { scrubKey } from './security.js';
 
 // data.go.kr 공통 결과 코드 (OpenAPI 표준)
 export const RESULT_CODES = {
@@ -195,7 +197,7 @@ export function interpret(bodyText, contentType = '') {
   return { kind, data, resultCode: resultCode ?? codeFromText(resultMsg), resultMsg };
 }
 
-const DEFAULT_FETCH = (url, init) => globalThis.fetch(url, init);
+const DEFAULT_FETCH = (url, init) => pinnedFetch(url, init);
 const DEFAULT_SLEEP = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 네트워크 오류를 사람이 읽을 메시지로
@@ -241,7 +243,8 @@ export async function callApi({
       signal?.removeEventListener('abort', onAbort);
     }
     const contentType = res.headers?.get?.('content-type') || '';
-    const text = await res.text();
+    // 서버(게이트웨이 오류 페이지 등)가 요청 URL 을 되비춰도 키가 결과·AI 컨텍스트·내보내기 파일에 들어가지 않게 가린다
+    const text = scrubKey(await res.text(), serviceKey);
     const { kind, data, resultCode, resultMsg, html } = interpret(text, contentType);
     // 200 이어도 본문이 HTML(게이트웨이/점검 페이지)이면 성공이 아니다
     const hint = hintFor(resultCode)
@@ -279,7 +282,7 @@ export async function callApi({
         if (i < retries) await sleep(backoffMs(i, retryDelayMs));
       }
     }
-    const err = /** @type {any} */ (new Error(describeNetworkError(lastErr, timeoutMs)));
+    const err = /** @type {any} */ (new Error(scrubKey(maskUrl(describeNetworkError(lastErr, timeoutMs)), serviceKey)));
     err.cause = lastErr;
     err.attempts = attempts;
     throw err;

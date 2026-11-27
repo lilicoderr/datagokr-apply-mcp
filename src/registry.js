@@ -19,6 +19,12 @@ export function assertSafeName(name, what = '이름') {
   return n;
 }
 
+// 저장된 URL/기본 params 에 사용자가 키를 붙여 넣었어도 목록·리소스 출력에는 가린다 (호출에는 원본 사용)
+function maskEndpoint(e) {
+  const params = Object.fromEntries(Object.entries(e?.params || {}).map(([k, v]) => [k, k.toLowerCase() === 'servicekey' ? '***' : v]));
+  return { ...e, url: String(e?.url ?? '').replace(/(servicekey=)[^&#]*/gi, '$1***'), params };
+}
+
 const BLANK = { keys: {}, defaultKey: null, endpoints: {} };
 
 export function createRegistry(file = defaultConfigPath()) {
@@ -40,7 +46,8 @@ export function createRegistry(file = defaultConfigPath()) {
       // 손상된 파일을 빈 상태로 덮어쓰면 저장된 키가 전부 사라진다 → 백업 후 진행
       const bak = `${file}.corrupt-${Date.now()}.bak`;
       try { fs.copyFileSync(file, bak); fs.chmodSync(bak, 0o600); } catch { /* 백업 실패해도 계속 */ }
-      console.error(`[datagokr-mcp] 설정 파일이 손상돼 백업했어요: ${bak} (${e.message})`);
+      // JSON.parse 오류 메시지는 파일 내용(키)을 인용하므로 출력하지 않는다
+      console.error(`[datagokr-mcp] 설정 파일이 손상돼 백업했어요: ${bak} (${e.name})`);
       return structuredClone(BLANK);
     }
   }
@@ -92,7 +99,7 @@ export function createRegistry(file = defaultConfigPath()) {
     },
     removeKey(name) {
       const s = load();
-      if (!s.keys[name]) return false;
+      if (!Object.hasOwn(s.keys, name)) return false;
       delete s.keys[name];
       if (s.defaultKey === name) s.defaultKey = Object.keys(s.keys)[0] || null;
       save(s);
@@ -100,13 +107,13 @@ export function createRegistry(file = defaultConfigPath()) {
     },
     setDefaultKey(name) {
       const s = load();
-      if (!s.keys[name]) throw new Error(`키 '${name}' 가 없습니다.`);
+      if (!Object.hasOwn(s.keys, name)) throw new Error(`키 '${name}' 가 없습니다.`);
       s.defaultKey = name;
       save(s);
       return name;
     },
     // ── 엔드포인트(별칭) ──
-    listEndpoints() { return load().endpoints; },
+    listEndpoints() { return Object.fromEntries(Object.entries(load().endpoints).map(([a, e]) => [a, maskEndpoint(e)])); },
     getEndpoint(alias) { const e = load().endpoints; return Object.hasOwn(e, alias) ? e[alias] : null; },
     saveEndpoint(alias, url, note = '', params = {}, required = undefined) {
       if (!alias || !url) throw new Error('alias 와 url 이 필요합니다.');
@@ -119,7 +126,7 @@ export function createRegistry(file = defaultConfigPath()) {
     },
     removeEndpoint(alias) {
       const s = load();
-      if (!s.endpoints[alias]) return false;
+      if (!Object.hasOwn(s.endpoints, alias)) return false;
       delete s.endpoints[alias];
       save(s);
       return true;

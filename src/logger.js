@@ -3,15 +3,17 @@
 //   DATAGO_LOG_LEVEL = error | warn | info | debug (기본 off), DATAGO_DEBUG=1 은 debug 와 같음
 //   DATAGO_LOG_FORMAT = json | text (기본 json)
 
+import { keyVariants } from './security.js';
+
 const LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
 const SECRET_FIELD = /^(servicekey|service_key|key|apikey|api_key|authorization|cookie|set-cookie|password|token|secret|storagestate)$/i;
 
 export function redactString(s, secrets = []) {
   let out = String(s);
-  out = out.replace(/([?&;\s"']servicekey(?:=|"?\s*:\s*"?))[^&\s"',]*/gi, '$1***');
+  out = out.replace(/((?:^|[?&;\s"'])servicekey(?:=|"?\s*:\s*"?))[^&\s"',]*/gi, '$1***');
   out = out.replace(/(authorization["']?\s*[:=]\s*["']?)(?:bearer|basic)?\s*[^\s"',]+/gi, '$1***');
   out = out.replace(/((?:set-)?cookie["']?\s*[:=]\s*["']?)[^\r\n"']+/gi, '$1***');
-  for (const sec of secrets) if (sec && String(sec).length >= 8) out = out.split(sec).join('***');
+  for (const sec of secrets) for (const v of keyVariants(sec)) out = out.split(v).join('***');
   return out;
 }
 
