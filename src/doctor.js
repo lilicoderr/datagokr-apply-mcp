@@ -100,3 +100,32 @@ export function formatReport(results) {
 export function exitCode(results) {
   return results.some((r) => r.status === 'fail') ? 1 : 0;
 }
+
+// doctor --fix: 안전하게 자동 수정할 수 있는 항목만 고친다 (키·세션은 건드리지 않는다).
+//   fixable: config(설정 파일 생성), perm(chmod 600), chromium(브라우저 설치)
+export async function applyFixes(results, { registry, runCommand, platform = process.platform } = {}) {
+  const actions = [];
+  const done = (id, ok, msg) => actions.push({ id, ok, msg });
+  for (const r of results) {
+    if (r.status === 'ok') continue;
+    try {
+      if (r.id === 'config' && registry) {
+        done('config', true, registry.init() ? `설정 파일 생성: ${registry.file}` : '이미 있음');
+      } else if (r.id === 'perm' && registry && platform !== 'win32') {
+        fs.chmodSync(registry.file, 0o600);
+        done('perm', true, `chmod 600 ${registry.file}`);
+      } else if (r.id === 'chromium' && runCommand) {
+        const code = await runCommand('npx', ['playwright-core', 'install', 'chromium']);
+        done('chromium', code === 0, code === 0 ? 'Chromium 설치 완료' : `설치 실패(exit ${code}) — 수동: npx playwright-core install chromium`);
+      }
+    } catch (e) {
+      done(r.id, false, e.message);
+    }
+  }
+  return actions;
+}
+
+export function formatFixes(actions) {
+  if (!actions.length) return '자동으로 고칠 수 있는 항목이 없어요. (키 저장·로그인은 직접 해야 해요)';
+  return actions.map((a) => `${a.ok ? '🔧' : '❌'} ${a.id}: ${a.msg}`).join('\n');
+}

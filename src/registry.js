@@ -47,6 +47,12 @@ export function createRegistry(file = defaultConfigPath()) {
 
   return {
     file,
+    // 설정 파일이 없으면 빈 상태로 만든다 (doctor --fix). 이미 있으면 아무것도 하지 않는다.
+    init() {
+      if (fs.existsSync(file)) return false;
+      save(structuredClone(BLANK));
+      return true;
+    },
     // ── 서비스 키 ──
     listKeys() {
       const s = load();

@@ -10,8 +10,9 @@ import { createUsage } from '../src/usage.js';
 import { createCache } from '../src/cache.js';
 import { registerApplyTools } from '../src/tools-apply.js';
 import * as apply from '../src/apply.js';
-import { runDoctor, formatReport, exitCode } from '../src/doctor.js';
+import { runDoctor, formatReport, exitCode, applyFixes, formatFixes } from '../src/doctor.js';
 import { readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const arg = process.argv[2];
@@ -21,6 +22,7 @@ const HELP = `datagokr-apply-mcp v${pkg.version}
 사용법:
   datagokr-apply-mcp           MCP 서버 시작 (stdio) — 보통 Claude 가 실행
   datagokr-apply-mcp doctor    설치/키/네트워크/브라우저/세션 점검
+  datagokr-apply-mcp doctor --fix   고칠 수 있는 것(설정 파일·권한·Chromium)은 자동 수정
   datagokr-apply-mcp --version
 
 환경 변수:
@@ -42,9 +44,21 @@ const registry = createRegistry();
 const usage = createUsage();
 
 if (arg === 'doctor') {
-  const results = await runDoctor({ registry, usage, apply });
+  let results = await runDoctor({ registry, usage, apply });
   console.log(`datagokr-apply-mcp v${pkg.version} 점검\n`);
   console.log(formatReport(results));
+  if (process.argv.includes('--fix')) {
+    const runCommand = (cmd, args) => new Promise((resolve) => {
+      const p = spawn(cmd, args, { stdio: 'inherit', shell: process.platform === 'win32' });
+      p.on('close', (c) => resolve(c ?? 1));
+      p.on('error', () => resolve(1));
+    });
+    console.log('\n--- 자동 수정 ---');
+    console.log(formatFixes(await applyFixes(results, { registry, runCommand })));
+    results = await runDoctor({ registry, usage, apply });
+    console.log('\n--- 다시 점검 ---');
+    console.log(formatReport(results));
+  }
   process.exit(exitCode(results));
 }
 
