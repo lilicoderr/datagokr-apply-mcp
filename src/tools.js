@@ -81,7 +81,8 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
     let pages = 0;
     let last;
     for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
-      last = await callApi({ url, params: { ...params, pageNo, numOfRows }, serviceKey, fetchImpl, sleep, logger });
+      ctx?.signal?.throwIfAborted();
+      last = await callApi({ url, params: { ...params, pageNo, numOfRows }, serviceKey, fetchImpl, sleep, logger, signal: ctx?.signal });
       usage?.record(keyName, { ok: last.ok });
       pages++;
       ctx?.progress?.(pages, maxPages, `${pages}/${maxPages} 페이지 (${all.length + (last.ok ? extractItems(last.data).items.length : 0)}건)`);
@@ -112,14 +113,14 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
         cacheSeconds: { type: 'number', description: '같은 호출을 이 초 동안 캐시(성공 응답만, 트래픽 절약). 기본 0=끔' },
       },
     },
-  }, async (args) => {
+  }, async (args, ctx) => {
     const { url, params, serviceKey, keyName } = resolveCall(args, registry);
     const ttlMs = Math.max(0, Number(args.cacheSeconds) || 0) * 1000;
     const ck = cacheKey(url, params, keyName);
     let r = ttlMs && cache ? cache.get(ck) : undefined;
     const fromCache = Boolean(r);
     if (!r) {
-      r = await callApi({ url, params, serviceKey, method: args.method || 'GET', fetchImpl, sleep, logger });
+      r = await callApi({ url, params, serviceKey, method: args.method || 'GET', fetchImpl, sleep, logger, signal: ctx?.signal });
       usage?.record(keyName, { ok: r.ok });
       if (r.ok && ttlMs && cache) cache.set(ck, r, ttlMs);
     }
@@ -292,7 +293,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       stopOnError: { type: 'boolean' },
       maxItems: { type: 'number', description: '호출당 응답에 담을 최대 항목 (기본 5)' },
     } },
-  }, async (args) => {
+  }, async (args, ctx) => {
     const list = Array.isArray(args.paramsList) ? args.paramsList.slice(0, 50) : [];
     if (!list.length) throw new Error('paramsList 가 비어 있어요.');
     const { url, params, serviceKey, keyName } = resolveCall(args, registry);
@@ -300,8 +301,10 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
     const gap = Math.max(0, args.intervalMs ?? 200);
     const results = [];
     for (let i = 0; i < list.length; i++) {
+      ctx?.signal?.throwIfAborted();
       if (i > 0 && gap) await wait(gap);
-      const r = await callApi({ url, params: { ...params, ...list[i] }, serviceKey, fetchImpl, sleep, logger });
+      const r = await callApi({ url, params: { ...params, ...list[i] }, serviceKey, fetchImpl, sleep, logger, signal: ctx?.signal });
+      ctx?.progress?.(i + 1, list.length, `${i + 1}/${list.length} 호출`);
       usage?.record(keyName, { ok: r.ok });
       const ex = extractItems(r.data);
       results.push({ params: list[i], ok: r.ok, resultCode: r.resultCode ?? null, totalCount: ex.totalCount,

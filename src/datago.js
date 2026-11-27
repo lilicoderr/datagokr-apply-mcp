@@ -150,9 +150,10 @@ export function describeNetworkError(e, timeoutMs) {
  */
 export async function callApi({
   url, params = {}, serviceKey, method = 'GET', body, timeoutMs = 15000, fetchImpl = DEFAULT_FETCH,
-  retries = 2, retryDelayMs = 500, sleep = DEFAULT_SLEEP, logger, breaker,
+  retries = 2, retryDelayMs = 500, sleep = DEFAULT_SLEEP, logger, breaker, signal,
 }) {
   if (!url) throw new Error('url 이 필요합니다.');
+  signal?.throwIfAborted();
   const wait = breaker?.check(url) || 0;
   if (wait > 0) throw new CircuitOpenError(new URL(url).host, wait);
   let attempts = 0;
@@ -161,6 +162,8 @@ export async function callApi({
     const fullUrl = buildUrl(url, params, serviceKey, { encodeKey });
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const onAbort = () => ctrl.abort();
+    signal?.addEventListener('abort', onAbort, { once: true }); // 클라이언트 취소 → 요청 중단
     let res;
     const t0 = Date.now();
     try {
@@ -169,6 +172,7 @@ export async function callApi({
       logger?.(`← HTTP ${res.status} (${Date.now() - t0}ms)`);
     } finally {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
     }
     const contentType = res.headers?.get?.('content-type') || '';
     const text = await res.text();
@@ -198,6 +202,7 @@ export async function callApi({
         if (i < retries && isRetryable(r)) { await sleep(backoffMs(i, retryDelayMs)); continue; }
         return r;
       } catch (e) {
+        if (signal?.aborted) throw signal.reason ?? e; // 취소는 재시도·차단기 집계 대상이 아님
         lastErr = e;
         breaker?.failure(url);
         if (i < retries) await sleep(backoffMs(i, retryDelayMs));

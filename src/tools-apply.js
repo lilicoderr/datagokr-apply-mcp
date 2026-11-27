@@ -89,6 +89,7 @@ export function registerApplyTools(server, { apply: applyImpl } = {}) {
   }, async (a, ctx) => {
     const r = await apply.applyForApis(a.ids || [], {
       purpose: a.purpose,
+      signal: ctx?.signal,
       onProgress: (i, total, id) => ctx?.progress?.(i, total, `활용신청 ${i}/${total}: ${id}`),
     });
     const lines = [`요청 ${r.total}건 → ✅완료 ${r.done} · ↺이미 ${r.already} · ⚠️실패 ${r.failed}`];

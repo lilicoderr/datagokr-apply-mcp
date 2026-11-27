@@ -12,11 +12,16 @@
 export const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const DEFAULT_PROTOCOL = '2024-11-05';
 
+export class CancelledError extends Error {
+  constructor(reason) { super(reason ? `취소됨: ${reason}` : '취소됨'); this.name = 'CancelledError'; }
+}
+
 export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
   const tools = new Map(); // name -> { def, handler }
   const resources = new Map(); // uri -> { def, read }
   const prompts = new Map(); // name -> { def, build }
   let initialized = false;
+  const inflight = new Map(); // 요청 id -> AbortController (notifications/cancelled 용)
 
   function tool(toolName, def, handler) {
     tools.set(toolName, {
@@ -81,6 +86,12 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
         case 'notifications/initialized':
         case 'initialized':
           return null; // 알림
+        case 'notifications/cancelled': {
+          // 취소 알림: 진행 중 요청을 중단하고, 스펙대로 그 요청에는 응답하지 않는다.
+          const rid = msg.params?.requestId;
+          inflight.get(rid)?.abort(new CancelledError(msg.params?.reason));
+          return null;
+        }
         case 'ping':
           return reply(rpcResult(msg.id, {}));
         case 'tools/list':
@@ -90,10 +101,19 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
           const entry = tools.get(toolName);
           if (!entry) return reply(rpcError(msg.id, -32602, `알 수 없는 도구: ${toolName}`));
           try {
-            const ctx = makeContext(msg, opts);
-            const out = await entry.handler(msg.params?.arguments ?? {}, ctx);
+            const ctrl = new AbortController();
+            if (!isNotification) inflight.set(msg.id, ctrl);
+            const ctx = makeContext(msg, opts, ctrl.signal);
+            let out;
+            try {
+              out = await Promise.race([
+                entry.handler(msg.params?.arguments ?? {}, ctx),
+                new Promise((_, rej) => ctrl.signal.addEventListener('abort', () => rej(ctrl.signal.reason), { once: true })),
+              ]);
+            } finally { inflight.delete(msg.id); }
             return reply(rpcResult(msg.id, toToolResult(out)));
           } catch (err) {
+            if (err instanceof CancelledError) return null; // 취소된 요청에는 응답하지 않는다
             // 도구 실행 오류는 프로토콜 오류가 아니라 content.isError 로 전달 (MCP 권장)
             return reply(rpcResult(msg.id, {
               content: [{ type: 'text', text: `오류: ${err?.message || err}` }],
@@ -135,11 +155,12 @@ export function createServer({ name = 'mcp-server', version = '0.0.0' } = {}) {
 
   // 도구 핸들러에 넘기는 두 번째 인자. progress(현재, 전체?, 메시지?) 는 클라이언트가
   // _meta.progressToken 을 보냈을 때만 notifications/progress 를 내보내고, 값은 단조 증가만 허용한다.
-  function makeContext(msg, opts) {
+  function makeContext(msg, opts, signal) {
     const token = msg.params?._meta?.progressToken;
     let last = -Infinity;
     return {
       requestId: msg.id,
+      signal,
       progress(progress, total, message) {
         if (token === undefined || token === null || !opts.notify) return false;
         if (!(progress > last)) return false;
