@@ -1,6 +1,7 @@
 // MCP Streamable HTTP 전송 (선택). 기본은 127.0.0.1 에서만 열고, 토큰이 있으면 Bearer 인증을 요구한다.
 //
 //   POST /mcp   JSON-RPC 메시지 1개(또는 배열) → application/json 응답, 알림만 있으면 202
+//        (progressToken + Accept: text/event-stream 이면 SSE 로 진행률 알림을 흘리고 마지막에 응답)
 //   GET  /mcp   405 (서버 주도 SSE 스트림은 제공하지 않음)
 //   DELETE /mcp 200 (세션 없음 — 무상태)
 //
@@ -58,6 +59,22 @@ export function createHttpHandler(server, { token, path = '/mcp' } = {}) {
         return send(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
       }
       const batch = Array.isArray(msg);
+      const wantsSse = !batch && msg?.params?._meta?.progressToken !== undefined
+        && String(req.headers.accept || '').includes('text/event-stream');
+      // 응답이 끝나기 전에 클라이언트가 연결을 끊으면 스펙대로 취소로 간주한다
+      if (!batch && msg?.id !== undefined && msg?.id !== null) {
+        res.on('close', () => {
+          if (!res.writableEnded) server.handle({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: msg.id, reason: 'client disconnected' } });
+        });
+      }
+      if (wantsSse) {
+        // 진행률 알림을 SSE 로 흘리고 마지막에 응답을 보낸다
+        res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+        const emit = (obj) => res.write(["event: message", `data: ${JSON.stringify(obj)}`, "", ""].join(String.fromCharCode(10)));
+        const final = await server.handle(msg, { notify: emit });
+        if (final) emit(final);
+        return res.end();
+      }
       const out = (await Promise.all((batch ? msg : [msg]).map((m) => server.handle(m)))).filter(Boolean);
       if (!out.length) { res.writeHead(202); return res.end(); }
       return send(res, 200, batch ? out : out[0]);
