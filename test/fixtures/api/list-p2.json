@@ -1,0 +1,35 @@
+{
+ "response": {
+  "header": {
+   "resultCode": "00",
+   "resultMsg": "NORMAL SERVICE."
+  },
+  "body": {
+   "items": {
+    "item": [
+     {
+      "dt": "20240105",
+      "name": "항목4",
+      "cnt": "40",
+      "kind": "B"
+     },
+     {
+      "dt": "20240106",
+      "name": "항목5",
+      "cnt": "50",
+      "kind": "A"
+     },
+     {
+      "dt": "20240107",
+      "name": "항목6",
+      "cnt": "60",
+      "kind": "B"
+     }
+    ]
+   },
+   "numOfRows": 3,
+   "pageNo": 2,
+   "totalCount": 7
+  }
+ }
+}
