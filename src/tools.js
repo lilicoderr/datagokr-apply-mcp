@@ -27,14 +27,14 @@ export const APPLY_GUIDE = `공공데이터포털 오픈API 활용신청 → 키
 function text(t) { return { content: [{ type: 'text', text: t }] }; }
 export const MAX_RAW_CHARS = 20000;
 function pretty(obj) { return text(typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2)); }
-// endpoint 별칭/직접 url + 키를 해석해 호출 준비물을 만든다 (call_api, fetch_all 공용)
+
 // describe_api 가 읽은 명세를 기억해 두었다가 call_api 호출 전에 필수 변수 누락을 잡는다 (프로세스 메모리)
 const specCache = new Map();
 const specKey = (u) => String(u || '').split('?')[0].replace(/\/+$/, '');
 
 /** @param {any} url @param {any} params @param {{ required?: string[], ignore?: string[] }} [opts] */
 export function checkParams(url, params, opts = {}) {
-export function checkParams(url, params, { required: saved, ignore = [] } = {}) {
+  const { required: saved, ignore = [] } = opts;
   const spec = specCache.get(specKey(url));
   const required = saved || spec?.required;
   if (!required) return null;
