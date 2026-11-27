@@ -14,6 +14,7 @@ import { registerResources } from '../src/resources.js';
 import { registerApplyTools } from '../src/tools-apply.js';
 import * as apply from '../src/apply.js';
 import { runDoctor, formatReport, exitCode, applyFixes, formatFixes } from '../src/doctor.js';
+import { startHttp } from '../src/http.js';
 import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +36,7 @@ const HELP = `datagokr-apply-mcp v${pkg.version}
   DATAGO_CONFIG   키 저장 파일 (기본 ~/.datago-mcp.json)
   DATAGO_USAGE    호출량 집계 파일 (기본 ~/.datago-usage.json)
   DATAGO_HOME     로그인 세션 폴더 (기본 ~/.datagokr-mcp)
+  DATAGO_HTTP_TOKEN  --http 일 때 Bearer 토큰 (비로컬 host 에는 필수)
   DATAGO_DEBUG    1 이면 debug 로그를 stderr 로 출력 (serviceKey·쿠키·저장된 키는 ***)
   DATAGO_LOG_LEVEL   error|warn|info|debug (JSON lines, stderr)  DATAGO_LOG_FORMAT=text 로 평문`;
 
@@ -95,4 +97,16 @@ server.tool('doctor', {
 
 // stderr 로그만 사용 (stdout 은 프로토콜 전용)
 console.error(`[datagokr-mcp] v${pkg.version} 시작 — 도구 ${server.tools.size}개`);
-server.listen();
+const argv = process.argv.slice(2);
+if (argv.includes('--http')) {
+  const opt = (n, d) => { const i = argv.indexOf(n); return i >= 0 && argv[i + 1] ? argv[i + 1] : d; };
+  try {
+    const srv = await startHttp(server, {
+      host: opt('--host', '127.0.0.1'), port: Number(opt('--port', 3000)), token: process.env.DATAGO_HTTP_TOKEN || '',
+    });
+    const a = srv.address();
+    console.error(`[datagokr-mcp] HTTP 대기 중: http://${a.address}:${a.port}/mcp${process.env.DATAGO_HTTP_TOKEN ? ' (토큰 인증)' : ''}`);
+  } catch (e) { console.error(`[datagokr-mcp] ${e.message}`); process.exit(2); }
+} else {
+  server.listen();
+}
