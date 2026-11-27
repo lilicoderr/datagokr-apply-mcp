@@ -69,7 +69,7 @@ export function isSuccessCode(code) {
 }
 
 // 일시 장애라 재시도할 가치가 있는 resultCode (01 앱 에러, 02 DB 에러, 05 타임아웃)
-const RETRYABLE_CODES = new Set(['01', '02', '05']);
+export const RETRYABLE_CODES = new Set(['01', '02', '05']);
 
 export function isRetryable({ httpStatus, resultCode, error } = {}) {
   if (error) return true; // 네트워크 오류/타임아웃

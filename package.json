@@ -9,7 +9,8 @@
   },
   "scripts": {
     "start": "node bin/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "docs:errors": "node scripts/gen-error-catalog.js"
   },
   "engines": {
     "node": ">=20"
