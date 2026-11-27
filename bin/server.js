@@ -14,6 +14,7 @@ import { registerResources } from '../src/resources.js';
 import { registerApplyTools } from '../src/tools-apply.js';
 import * as apply from '../src/apply.js';
 import { runDoctor, formatReport, exitCode, applyFixes, formatFixes } from '../src/doctor.js';
+import { annotateTools } from '../src/annotations.js';
 import { startHttp } from '../src/http.js';
 import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -94,6 +95,8 @@ server.tool('doctor', {
   const results = await runDoctor({ registry, usage, apply });
   return { content: [{ type: 'text', text: formatReport(results) }] };
 });
+
+annotateTools(server);
 
 // stderr 로그만 사용 (stdout 은 프로토콜 전용)
 console.error(`[datagokr-mcp] v${pkg.version} 시작 — 도구 ${server.tools.size}개`);

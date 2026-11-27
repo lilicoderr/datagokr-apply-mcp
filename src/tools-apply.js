@@ -8,6 +8,7 @@
 //   4) my_applications 로 신청/승인 확인, 발급된 키를 save_key 로 저장 → call_api 로 사용
 
 import * as apply from './apply.js';
+import { annotateTools } from './annotations.js';
 
 function text(t) { return { content: [{ type: 'text', text: t }] }; }
 
@@ -22,6 +23,7 @@ export function registerApplyTools(server) {
       + '  npx playwright-core install chromium\n'
       + '설치 후 MCP 서버를 재시작하면 apply_login / apply_api 가 활성화됩니다.\n'
       + '※ 비밀번호는 저장하지 않고, 로그인 세션만 홈 폴더(저장소 밖)에 보관합니다.'));
+    annotateTools(server);
     return;
   }
 
@@ -110,4 +112,5 @@ export function registerApplyTools(server) {
       ? '\n→ 승인된 API 의 인증키는 포털 마이페이지 > 개발계정에서 확인해 save_key 로 저장하세요.' : '';
     return text(`${head}${counts ? ` (${counts})` : ''}\n` + r.parsed.map((x, i) => `${i + 1}. [${x.status}] ${x.name}`).join('\n') + hint);
   });
+  annotateTools(server);
 }
