@@ -12,7 +12,7 @@ const W = { ro: false, dest: false, idem: true, open: false };
 
 export const TOOL_ANNOTATIONS = {
   call_api: NET, fetch_all: NET, batch_call: NET, describe_api: NET, api_types: NET, infer_schema: NET,
-  find_apply_targets: NET, search_datasets: NET, recommend_datasets: NET, dataset_watch_check: NET,
+  find_apply_targets: NET, search_datasets: NET, recommend_datasets: NET,
   export_data: { ro: false, dest: true, idem: false, open: true }, // 같은 이름 파일을 덮어쓸 수 있음
   quota_status: R, list_keys: R, list_endpoints: R, explain_error: R, list_error_codes: R, apply_guide: R,
   apply_setup: R, doctor: R, apply_status: { ro: true, open: true }, geo: R,

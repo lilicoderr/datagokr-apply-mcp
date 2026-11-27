@@ -15,6 +15,7 @@ import { inferSchema } from './schema.js';
 import { recommendDatasets } from './recommend.js';
 import { structured } from './outputs.js';
 import { registerGeoTools } from './tools-geo.js';
+import { registerWatchTools } from './tools-watch.js';
 import { annotateTools } from './annotations.js';
 
 export const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
@@ -71,7 +72,7 @@ function summarizeResult(r) {
   return summary;
 }
 
-export function registerTools(server, { registry, fetchImpl, usage, sleep, logger, cache, exportDir, breaker = createBreaker() } = {}) {
+export function registerTools(server, { registry, fetchImpl, usage, sleep, logger, cache, exportDir, breaker = createBreaker(), watchStore } = {}) {
   const callApi = (opts) => callApiRaw({ breaker, ...opts });
   // fetch_all / export_data 공용: pageNo 를 올리며 항목을 모은다
   async function collectPages(args, ctx) {
@@ -408,6 +409,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
     }
   });
   registerGeoTools(server);
+  registerWatchTools(server, { fetchImpl, store: watchStore });
   annotateTools(server);
 }
 

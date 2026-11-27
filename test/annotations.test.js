@@ -41,7 +41,7 @@ test('읽기 전용 도구에는 destructive/idempotent 가 없고, 쓰기 도�
 
 test('표에 오타가 없다: 등록된 도구 이름만 (미구현 예정 도구 제외)', () => {
   const names = new Set(full().tools.keys());
-  const planned = new Set(['dataset_watch', 'dataset_watch_check', 'geo']);
+  const planned = new Set([]);
   for (const k of Object.keys(TOOL_ANNOTATIONS)) {
     assert.ok(names.has(k) || planned.has(k) || k === 'apply_setup', `표의 ${k} 는 등록되지 않음`);
   }

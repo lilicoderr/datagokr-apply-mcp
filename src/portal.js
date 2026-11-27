@@ -65,6 +65,7 @@ export function parseOpenApiPage(html) {
     title,
     provider: info['제공기관'] || null,
     description: info['설명'] || null,
+    updated: info['수정일'] || info['최종수정일'] || info['최종 수정일'] || null,
     format: info['데이터 포맷'] || null,
     apiType: info['API 유형'] || null,
     reviewType: info['심의유형'] || null,

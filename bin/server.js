@@ -36,6 +36,7 @@ const HELP = `datagokr-apply-mcp v${pkg.version}
 환경 변수:
   DATAGO_CONFIG   키 저장 파일 (기본 ~/.datago-mcp.json)
   DATAGO_USAGE    호출량 집계 파일 (기본 ~/.datago-usage.json)
+  DATAGO_WATCH    dataset_watch 스냅샷 파일 (기본 ~/.datago-watch.json)
   DATAGO_HOME     로그인 세션 폴더 (기본 ~/.datagokr-mcp)
   DATAGO_HTTP_TOKEN  --http 일 때 Bearer 토큰 (비로컬 host 에는 필수)
   DATAGO_DEBUG    1 이면 debug 로그를 stderr 로 출력 (serviceKey·쿠키·저장된 키는 ***)
