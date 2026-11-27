@@ -9,6 +9,7 @@ import { fetchApiSpec, buildExampleParams, searchDatasets, findApplyTargets } fr
 import { cacheKey } from './cache.js';
 import { writeExport } from './export.js';
 import { toTypeScript } from './hints.js';
+import { inferSchema } from './schema.js';
 import { recommendDatasets } from './recommend.js';
 
 export const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
@@ -251,6 +252,25 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
     const spec = await fetchApiSpec(a.idOrUrl, { fetchImpl });
     if (!spec.found) return text(`명세를 읽지 못했어요. 직접 확인: ${spec.pageUrl}`);
     return text(`// ${spec.title} — ${spec.endpoint || spec.pageUrl}\n${toTypeScript(spec, { name: a.name })}`);
+  });
+
+  // ── infer_schema : 실제 응답으로 필드 타입/결측률 추정 ──
+  server.tool('infer_schema', {
+    description: '실제로 한 번 호출해서 응답 항목들의 필드별 타입(날짜/숫자문자열 등)·결측률·예시·enum 후보를 추정한다. '
+      + '명세(describe_api)와 실제 응답이 다를 때나 데이터 파이프라인을 만들 때 쓴다. 1회 호출(트래픽 1) 소모.',
+    inputSchema: { type: 'object', properties: {
+      url: { type: 'string' }, endpoint: { type: 'string' }, params: { type: 'object' },
+      keyName: { type: 'string' }, serviceKey: { type: 'string' },
+      numOfRows: { type: 'number', description: '표본 크기 (기본 50)' },
+    } },
+  }, async (args) => {
+    const { url, params, serviceKey, keyName } = resolveCall(args, registry);
+    const r = await callApi({ url, params: { ...params, pageNo: 1, numOfRows: args.numOfRows || 50 }, serviceKey, fetchImpl, sleep, logger });
+    usage?.record(keyName, { ok: r.ok });
+    if (!r.ok) return pretty({ ...summarizeResult(r), 안내: '호출에 실패해 스키마를 추정하지 못했어요.' });
+    const { items, totalCount } = extractItems(r.data);
+    if (!items.length) return text('응답에 항목이 없어요. params 를 바꿔 다시 시도하세요.');
+    return pretty({ totalCount, ...inferSchema(items) });
   });
 
   // ── batch_call : 같은 API 를 여러 params 로 호출 (호출 간격 제한) ──
