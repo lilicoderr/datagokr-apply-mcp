@@ -199,6 +199,10 @@ export function registerApplyTools(server, { apply: applyImpl, registry } = {}) 
         hint: 'Not logged in; run apply_login first.' });
     }
     const head = r.total != null ? `활용신청 현황 ${r.total}건` : `목록 ${r.count}건`;
+    if (r.total === 0) {
+      return reply({ ok: true, total: 0, byStatus: {}, items: [], message: '활용신청 내역이 없어요.',
+        next: 'find_apply_targets 로 대상을 고른 뒤 apply_api', hint: 'No applications yet; pick a target and run apply_api.' });
+    }
     if (!r.items?.length) {
       return reply({ ok: false, total: r.total ?? null, message: `${head} — 목록 항목을 파싱하지 못했어요. 포털 마이페이지에서 직접 확인하세요.`,
         hint: 'Application list could not be parsed (layout unverified); check the portal My Page manually.' });

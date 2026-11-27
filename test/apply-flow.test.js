@@ -61,6 +61,9 @@ test('my_applications: 승인 건이 있으면 apply_get_key 안내, 파싱 실�
   r = await call(mk({ total: 1, count: 1, items: [1], parsed: [{ name: 'A API', status: '승인' }], byStatus: { 승인: 1 } }), 'my_applications');
   assert.match(r.structuredContent.next, /apply_get_key/);
   assert.equal(r.structuredContent.items[0].status, '승인');
+  r = await call(mk({ total: 0, count: 0, items: [], parsed: [], byStatus: {} }), 'my_applications');
+  assert.equal(r.structuredContent.ok, true);
+  assert.match(r.structuredContent.next, /apply_api/);
   r = await call(mk({ total: 2, count: 0, items: [], parsed: [], byStatus: {} }), 'my_applications');
   assert.equal(r.structuredContent.ok, false);
   assert.match(r.structuredContent.hint, /parsed/);

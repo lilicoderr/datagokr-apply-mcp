@@ -57,3 +57,15 @@ test('validateServiceKeys: 짧거나 틀린 토큰은 거부', () => {
   assert.equal(validateServiceKeys({ encoding: '%E0%A4%A', decoding: DEC }).ok, false);
   assert.equal(validateServiceKeys(null).ok, false);
 });
+
+import { KEY_PAGE, FAKE_ENC, FAKE_DEC, FAKE_HEX } from './helpers/fake-portal.js';
+
+// 브라우저 없이도(CI) 도는 개발계정 키 페이지 변형 검사
+test('extractServiceKeys: 표 머리글 / HTML 엔티티 / 앞쪽 안내 문구 / hex 키', () => {
+  for (const v of ['inputs', 'headerRow', 'entities', 'farLabel']) {
+    assert.deepEqual(extractServiceKeys(KEY_PAGE[v]), { encoding: FAKE_ENC, decoding: FAKE_DEC }, v);
+  }
+  assert.deepEqual(extractServiceKeys(KEY_PAGE.hex), { encoding: FAKE_HEX, decoding: FAKE_HEX });
+  assert.equal(validateServiceKeys(extractServiceKeys(KEY_PAGE.truncated)).ok, false);
+  assert.equal(extractServiceKeys(KEY_PAGE.none), null);
+});

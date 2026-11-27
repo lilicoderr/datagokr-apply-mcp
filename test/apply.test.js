@@ -105,3 +105,29 @@ test('applyInContext: 목적 입력/동의/제출 실패는 ok:false + failedSte
     assert.match(r.message, new RegExp(step));
   }
 });
+
+// ── 테스트용 주소 주입은 로컬 + 분리된 세션 폴더에서만 ──
+import { resolveBaseUrl } from '../src/apply.js';
+
+test('resolveBaseUrl: 기본은 실제 포털, 로컬 주입은 조건을 모두 갖춰야 허용', () => {
+  assert.equal(resolveBaseUrl({}), 'https://www.data.go.kr');
+  assert.equal(resolveBaseUrl({ DATAGO_ALLOW_LOCAL: '1' }), 'https://www.data.go.kr');
+  const ok = { DATAGO_ALLOW_LOCAL: '1', DATAGO_HOME: 'x' };
+  for (const u of ['http://127.0.0.1:1234', 'http://localhost:1/path', 'http://[::1]:5']) {
+    assert.equal(resolveBaseUrl({ ...ok, DATAGO_BASE_URL: u }), new URL(u).origin);
+  }
+  for (const u of ['https://evil.example', 'http://localhost.evil.example', 'http://127.0.0.1@evil.example',
+    'http://user:pw@127.0.0.1', 'http://192.168.0.1', 'http://0.0.0.0', 'file://localhost/x', 'not a url']) {
+    assert.throws(() => resolveBaseUrl({ ...ok, DATAGO_BASE_URL: u }), /테스트 전용/, u);
+  }
+  const local = 'http://127.0.0.1:1';
+  assert.throws(() => resolveBaseUrl({ DATAGO_HOME: 'x', DATAGO_BASE_URL: local }), /테스트 전용/);
+  assert.throws(() => resolveBaseUrl({ DATAGO_ALLOW_LOCAL: '1', DATAGO_BASE_URL: local }), /DATAGO_HOME/);
+  assert.throws(() => resolveBaseUrl({ ...ok, DATAGO_STATE: 'real.json', DATAGO_BASE_URL: local }), /DATAGO_STATE/);
+});
+
+test('classifyApplyDialog: 부정문은 완료가 아니다', () => {
+  for (const m of ['오류로 신청이 완료되지 않았습니다.', '활용신청이 완료되지 못했습니다', '신청 완료할 수 없습니다']) {
+    assert.equal(classifyApplyDialog(m).done, false, m);
+  }
+});

@@ -13,9 +13,28 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 
+const PORTAL = 'https://www.data.go.kr';
+
+// 테스트 전용: DATAGO_BASE_URL 로 로컬 가짜 포털을 가리킨다. 실제 로그인 정보가 다른 곳으로 가지 않도록
+// DATAGO_ALLOW_LOCAL=1 + 루프백 주소 + 별도 DATAGO_HOME(실제 세션 폴더와 분리)이 모두 있어야 하고, 아니면 시작을 거부한다.
+export function resolveBaseUrl(env = process.env) {
+  const raw = env.DATAGO_BASE_URL;
+  if (!raw) return PORTAL;
+  let u = null;
+  try { u = new URL(raw); } catch { /* 아래에서 거부 */ }
+  const loopback = u && ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);
+  if (env.DATAGO_ALLOW_LOCAL !== '1' || !loopback || !['http:', 'https:'].includes(u.protocol) || u.username || u.password) {
+    throw new Error('DATAGO_BASE_URL 은 테스트 전용이에요: DATAGO_ALLOW_LOCAL=1 과 localhost 주소에서만 허용돼요.');
+  }
+  if (!env.DATAGO_HOME || env.DATAGO_STATE) {
+    throw new Error('DATAGO_BASE_URL 을 쓸 때는 별도의 DATAGO_HOME 을 지정하고 DATAGO_STATE 는 비워야 해요(실제 세션과 분리).');
+  }
+  return u.origin;
+}
+
+const BASE = resolveBaseUrl();
 const HOME_DIR = process.env.DATAGO_HOME || path.join(os.homedir(), '.datagokr-mcp');
 const STATE_FILE = process.env.DATAGO_STATE || path.join(HOME_DIR, 'storage-state.json');
-const BASE = 'https://www.data.go.kr';
 export const DEFAULT_PURPOSE = '개인 학습 및 서비스 개발용';
 const MYPAGE = `${BASE}/iim/main/mypageMain.do`;
 
@@ -58,12 +77,22 @@ async function withContext({ headless = true, withState = true } = {}, fn) {
   }
 }
 
+const isLoginUrl = (u) => /auth\.data\.go\.kr|common-login|\/login|loginView/i.test(String(u));
+const isLoginDialog = (m) => /로그인(이|을)?\s*(필요|해\s*주|하여|후)|세션이?\s*(만료|종료)/.test(String(m));
+
+// 이동한 뒤 로그인이 풀렸는지 본다: 로그인 URL 로 튕기거나, "로그인이 필요" 알림창을 띄우는 두 방식 모두.
+async function gotoGated(page, url, options) {
+  const messages = [];
+  const onDialog = async (d) => { messages.push(d.message()); await d.accept().catch(() => {}); };
+  page.on('dialog', onDialog);
+  try { await page.goto(url, options); } finally { page.off('dialog', onDialog); }
+  return { needLogin: isLoginUrl(page.url()) || messages.some(isLoginDialog) };
+}
+
 // 마이페이지로 이동해 로그인 페이지로 튕기지 않으면 로그인 상태로 본다.
 async function isAuthed(page) {
   try {
-    await page.goto(MYPAGE, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    await page.waitForTimeout(500);
-    return !/auth\.data\.go\.kr|common-login|\/login/i.test(page.url());
+    return !(await gotoGated(page, MYPAGE, { waitUntil: 'networkidle', timeout: 20000 })).needLogin;
   } catch {
     return false;
   }
@@ -110,6 +139,11 @@ export async function startLogin({ timeoutMin = 20 } = {}) {
   const closeTimer = setTimeout(() => { closeLoginWindow().catch(() => {}); }, timeoutMin * 60000);
   closeTimer.unref?.();
   loginWindow = { ctx, timer, closeTimer };
+  // 사용자가 창을 직접 닫아도 "이미 열려 있어요" 상태로 남지 않게 정리한다.
+  ctx.on('close', () => {
+    if (loginWindow?.ctx !== ctx) return;
+    clearInterval(timer); clearTimeout(closeTimer); loginWindow = null;
+  });
   return {
     started: true,
     message: `로그인 창을 열었어요. 그 창에서 data.go.kr 에 로그인하세요(비번은 저장되지 않아요). 로그인하면 자동 저장되며, apply_status 로 확인하면 창이 닫혀요. (최대 ${timeoutMin}분)`,
@@ -152,18 +186,39 @@ export async function applyForApi({ idOrUrl, purpose = DEFAULT_PURPOSE, headless
 // 이미 열린 브라우저 컨텍스트에서 신청 1건 수행 (일괄 신청에서 브라우저를 재사용하기 위해 분리)
 export async function applyInContext(ctx, { pk, purpose = DEFAULT_PURPOSE }) {
   const steps = [];
-  const dialogs = [];
+  const purposeText = String(purpose ?? '').trim() || DEFAULT_PURPOSE;
+  const dialogs = []; // { type, message }
   const page = await ctx.newPage();
-  page.on('dialog', async (d) => { dialogs.push(d.message()); await d.accept().catch(() => {}); });
+  page.on('dialog', async (d) => { dialogs.push({ type: d.type?.() || 'alert', message: d.message() }); await d.accept().catch(() => {}); });
+  // 확인창(confirm)의 문구는 "질문"이라 완료/거절 판정에 쓰지 않는다.
+  const alerts = () => dialogs.filter((d) => d.type !== 'confirm').map((d) => d.message);
+  const verdict = () => {
+    const c = classifyApplyDialog(alerts().join(' | '));
+    const asked = dialogs.some((d) => d.type === 'confirm' && /이미\s*(활용\s*)?신청(한|된)/.test(d.message));
+    return { done: c.done, already: c.already || asked };
+  };
+  const dialogText = () => dialogs.map((d) => d.message).join(' | ').slice(0, 160);
+  const loginLost = () => isLoginUrl(page.url()) || alerts().some(isLoginDialog);
+  const needLogin = () => ({ ok: false, needLogin: true, message: '로그인 세션이 없습니다. 먼저 apply_login.', steps });
   try {
     // 개발계정 신청 폼으로 바로 이동 (활용신청 버튼의 window.open 대상과 동일)
     const formUrl = `${BASE}/tcs/dss/redirectDevAcountRequestForm.do?publicDataPk=${pk}&isBusinessApply=undefined`;
-    await page.goto(formUrl, { waitUntil: 'networkidle', timeout: 40000 }).catch(() => {});
-    if (/login|loginView/i.test(page.url())) {
-      return { ok: false, needLogin: true, message: '로그인 세션이 없습니다. 먼저 apply_login.', steps };
-    }
-    if (!page.url().includes('AcountRequestForm') && !(await page.locator('textarea[name="prcusePurps"]').count())) {
-      return { ok: false, message: '신청 폼을 열지 못했습니다. (LINK형 API이거나 기업회원 전용일 수 있어요)', steps, pageHint: page.url() };
+    let navError = /** @type {Error|null} */ (null);
+    await page.goto(formUrl, { waitUntil: 'networkidle', timeout: 40000 }).catch((e) => { navError = e; });
+    if (loginLost()) return needLogin();
+    const form = page.locator('textarea[name="prcusePurps"]');
+    // 알림창이 이미 떴으면 폼이 늦게 그려지기를 기다릴 이유가 없다
+    if (!dialogs.length && !(await form.count())) await form.waitFor?.({ state: 'attached', timeout: 5000 }).catch(() => {});
+    if (loginLost()) return needLogin();
+    if (!(await form.count())) {
+      const { already } = verdict();
+      const said = dialogText() ? ` 포털 알림: "${dialogText()}"` : '';
+      return {
+        ok: false, already, steps, dialog: dialogText(), pageHint: page.url(),
+        message: already ? '이미 신청된 API 입니다.'
+          : navError ? `신청 폼 페이지에 접속하지 못했어요: ${String(navError.message).split('\n')[0]}`
+            : `신청 폼을 열지 못했습니다. (LINK형 API이거나 기업회원 전용일 수 있어요)${said}`,
+      };
     }
     steps.push('신청 폼 열기');
 
@@ -175,32 +230,48 @@ export async function applyInContext(ctx, { pk, purpose = DEFAULT_PURPOSE }) {
     });
 
     // 활용목적 설명(필수)
-    try { await page.fill('textarea[name="prcusePurps"]', purpose, { timeout: 8000 }); } catch (e) { return fail('활용목적 입력', e); }
+    try { await page.fill('textarea[name="prcusePurps"]', purposeText, { timeout: 8000 }); } catch (e) { return fail('활용목적 입력', e); }
     steps.push('활용목적 입력');
 
     // 이용허락범위 동의 (숨은 input → 라벨 클릭). 동의 항목이 없는 API 도 있으니 0개는 정상. 상세기능은 기본 전체선택.
     try {
       const agree = page.locator('label:has-text("동의합니다")');
       const an = await agree.count();
-      for (let i = 0; i < an; i++) await agree.nth(i).click({ timeout: 4000 });
+      for (let i = 0; i < an; i++) {
+        // 이미 체크된 항목을 다시 누르면 동의가 풀린다
+        if (await agree.nth(i).evaluate?.((el) => /** @type {any} */ (el).control?.checked === true)) continue;
+        await agree.nth(i).click({ timeout: 4000 });
+      }
     } catch (e) { return fail('이용허락 동의', e); }
     steps.push('이용허락 동의');
 
     // 제출 (확인 다이얼로그 → accept, 완료 다이얼로그 수신)
     try { await page.getByRole('button', { name: /활용\s*신청하기/ }).first().click({ timeout: 10000 }); } catch (e) { return fail('제출', e); }
-    await page.waitForTimeout(3500);
+    // 결과 알림을 최대 약 15초 기다린다. 완료/이미 신청이 아닌 알림(거절 등)은 3.5초 더 지켜본 뒤 확정한다.
+    let seen = 0; let quiet = 0;
+    for (let i = 0; i < 60; i++) {
+      const v = verdict();
+      if (v.done || v.already || isLoginUrl(page.url())) break;
+      const n = alerts().length;
+      quiet = n === seen ? quiet + 1 : 0;
+      seen = n;
+      if (n && quiet >= 14) break;
+      await page.waitForTimeout(250);
+    }
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-    steps.push('제출');
 
-    const msg = dialogs.join(' | ');
-    const { done, already } = classifyApplyDialog(msg);
+    const { done, already } = verdict();
+    if (!done && !already && loginLost()) return needLogin();
+    steps.push('제출');
+    const said = alerts().join(' | ').slice(0, 160);
     return {
       ok: done,
       already,
       message: done
         ? `활용신청 완료 (자동승인 API 는 1~2시간 후 호출 가능). ${already ? '※ 이미 신청된 API' : ''}`
-        : (already ? '이미 신청된 API 입니다.' : '완료 문구를 확인하지 못했습니다. showBrowser:true 로 확인하세요.'),
-      dialog: msg.slice(0, 160),
+        : already ? '이미 신청된 API 입니다.'
+          : `완료 문구를 확인하지 못했습니다.${said ? ` 포털 알림: "${said}"` : ''} showBrowser:true 로 확인하세요.`,
+      dialog: dialogText(),
       steps,
       landedUrl: page.url(),
     };
@@ -212,8 +283,9 @@ export async function applyInContext(ctx, { pk, purpose = DEFAULT_PURPOSE }) {
 // 신청 후 뜬 알림창 문구로 결과 판정 (순수 함수 — 문구가 바뀌면 여기와 테스트만 고치면 됨)
 export function classifyApplyDialog(msg) {
   const s = String(msg || '');
+  const negated = /완료\s*(되|하)지\s*(않|못)|완료\s*(할|될)\s*수\s*없/.test(s);
   return {
-    done: /신청이?\s*완료|완료되었|정상적으로\s*신청/.test(s),
+    done: !negated && /신청이?\s*완료|완료되었|정상적으로\s*신청/.test(s),
     already: /이미.*신청|신청.*내역이\s*있/.test(s),
   };
 }
@@ -269,8 +341,9 @@ export async function applyForApis(idList, { purpose = DEFAULT_PURPOSE, delayMs 
 export async function listMyApplications({ headless = true } = {}) {
   return withContext({ headless }, async (ctx) => {
     const page = await ctx.newPage();
-    await page.goto(`${BASE}/iim/api/selectAcountList.do`, { waitUntil: 'networkidle', timeout: 40000 }).catch(() => {});
-    if (/login|loginView/i.test(page.url())) {
+    const gate = await gotoGated(page, `${BASE}/iim/api/selectAcountList.do`, { waitUntil: 'networkidle', timeout: 40000 })
+      .catch(() => ({ needLogin: isLoginUrl(page.url()) }));
+    if (gate.needLogin) {
       return { ok: false, needLogin: true, message: '로그인 세션이 없습니다. 먼저 apply_login.' };
     }
     const data = await page.evaluate(() => {
@@ -283,8 +356,11 @@ export async function listMyApplications({ headless = true } = {}) {
         .filter((t) => /^\[(승인|신청|반려|중지)\]/.test(t) || (/_|서비스|조회|정보/.test(t) && t.length > 6 && t.length < 60));
       return { total, items: [...new Set(names)].slice(0, 30) };
     });
-    const parsed = parseApplicationItems(data.items);
-    return { ok: true, total: data.total, count: parsed.length, items: data.items, parsed, byStatus: countByStatus(parsed) };
+    // 상태 표시([승인] 등)가 있는 항목이 하나라도 있으면, 이름만 비슷한 메뉴/안내 링크는 버린다.
+    const tagged = data.items.filter((t) => /^\[(승인|신청|반려|중지)\]/.test(t));
+    const items = tagged.length ? tagged : data.total === 0 ? [] : data.items;
+    const parsed = parseApplicationItems(items);
+    return { ok: true, total: data.total, count: parsed.length, items, parsed, byStatus: countByStatus(parsed) };
   });
 }
 
@@ -330,8 +406,9 @@ export async function fetchServiceKey({ headless = true } = {}) {
     const page = await ctx.newPage();
     try {
       for (const url of KEY_PAGES) {
-        await page.goto(url, { waitUntil: 'networkidle', timeout: 40000 }).catch(() => {});
-        if (/login|loginView/i.test(page.url())) {
+        const gate = await gotoGated(page, url, { waitUntil: 'networkidle', timeout: 40000 })
+          .catch(() => ({ needLogin: isLoginUrl(page.url()) }));
+        if (gate.needLogin) {
           return { ok: false, needLogin: true, message: '로그인 세션이 없습니다. 먼저 apply_login.' };
         }
         const keys = extractServiceKeys(await page.content());
