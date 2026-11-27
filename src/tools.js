@@ -13,6 +13,7 @@ import { assertSafeTarget } from './security.js';
 import { createBreaker } from './breaker.js';
 import { inferSchema } from './schema.js';
 import { recommendDatasets } from './recommend.js';
+import { structured } from './outputs.js';
 import { annotateTools } from './annotations.js';
 
 export const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
@@ -128,15 +129,18 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
     if (args.itemsOnly) {
       const { items, ...page } = extractItems(r.data);
       const max = args.maxItems || 20;
-      return pretty({ 요약, 페이징: page, 항목수: items.length, 항목: items.slice(0, max), 생략됨: Math.max(0, items.length - max) });
+      return structured({ 요약, 페이징: page, 항목수: items.length, 항목: items.slice(0, max), 생략됨: Math.max(0, items.length - max) });
     }
     // 원본이 너무 크면 AI 컨텍스트를 잡아먹으므로 잘라서 돌려주고 대안을 안내
     const body = JSON.stringify({ 요약, 데이터: r.data }, null, 2);
     if (body.length > MAX_RAW_CHARS) {
-      return text(`${body.slice(0, MAX_RAW_CHARS)}\n…(이하 ${body.length - MAX_RAW_CHARS}자 생략)\n`
-        + '※ 응답이 커서 잘랐어요. itemsOnly:true 로 항목만 받거나, 전체가 필요하면 fetch_all 을 쓰세요.');
+      return { ...text(`${body.slice(0, MAX_RAW_CHARS)}
+…(이하 ${body.length - MAX_RAW_CHARS}자 생략)
+`
+        + '※ 응답이 커서 잘랐어요. itemsOnly:true 로 항목만 받거나, 전체가 필요하면 fetch_all 을 쓰세요.'),
+        structuredContent: { 요약, 잘림: true } };
     }
-    return text(body);
+    return structured({ 요약, 데이터: r.data });
   });
 
   // ── fetch_all : 페이지 자동 순회 ──
@@ -157,7 +161,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
   }, async (args, ctx) => {
     const { all, totalCount, pages, last } = await collectPages(args, ctx);
     const max = args.maxItems || 200;
-    return pretty({
+    return structured({
       요약: summarizeResult(last),
       조회페이지: pages,
       totalCount,
@@ -187,7 +191,7 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       return text(`저장할 항목이 없어요. ${JSON.stringify(summarizeResult(last))}`);
     }
     const w = writeExport(all, { format: args.format || 'csv', name: args.filename || 'export', dir: exportDir });
-    return pretty({
+    return structured({
       요약: summarizeResult(last), 저장됨: w.file, 행수: w.rows, 바이트: w.bytes, 조회페이지: pages, totalCount,
       잘림: totalCount != null && all.length < totalCount,
     });
@@ -320,13 +324,13 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       + '대량 호출 전에 확인하면 resultCode 22(한도 초과)를 피할 수 있다. (포털 실제 값이 아닌 로컬 집계)',
     inputSchema: { type: 'object', properties: { limit: { type: 'number', description: '일일 한도 (기본 1000)' } } },
   }, async (a) => {
-    if (!usage) return text('호출량 집계가 꺼져 있어요.');
-    return pretty(usage.summary({ limit: a.limit || undefined }));
+    if (!usage) return structured({ day: '-', limit: 0, total: 0, byKey: {}, 안내: '호출량 집계가 꺼져 있어요.' });
+    return structured(usage.summary({ limit: a.limit || undefined }));
   });
 
   // ── 키 관리 ──
   server.tool('list_keys', { description: '저장된 서비스 키 목록(마스킹)과 기본 키를 보여준다.' },
-    async () => pretty(registry.listKeys()));
+    async () => structured(registry.listKeys()));
   server.tool('save_key', {
     description: '서비스 키를 이름으로 저장한다. (Encoding/Decoding 아무 형태나 가능)',
     inputSchema: { type: 'object', required: ['name', 'key'], properties: {

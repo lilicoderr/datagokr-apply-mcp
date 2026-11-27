@@ -1,3 +1,5 @@
+import { attachOutputSchemas } from './outputs.js';
+
 // MCP 도구 annotations (readOnlyHint / destructiveHint / idempotentHint / openWorldHint).
 // 스펙상 힌트일 뿐 보안 경계가 아니다. 클라이언트가 확인창·자동승인 정책에 참고한다.
 //   ro   : 환경을 바꾸지 않음           (readOnlyHint)
@@ -33,6 +35,7 @@ export function annotationsFor(name) {
 
 // 이미 등록된 도구에 annotations 를 붙인다 (명시된 값은 덮어쓰지 않음)
 export function annotateTools(server) {
+  attachOutputSchemas(server); // outputSchema 도 같은 시점에 붙인다
   for (const [name, entry] of server.tools) {
     if (!entry.def.annotations) {
       const a = annotationsFor(name);
