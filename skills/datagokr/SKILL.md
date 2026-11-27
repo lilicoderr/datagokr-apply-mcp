@@ -9,7 +9,7 @@ datagokr MCP 도구를 아래 순서로 쓴다. 추측으로 호출하지 말고
 
 ## 0. 막히면 먼저
 
-호출이 이상하거나 `apply_*` 도구가 안 보이면 `doctor` 를 실행해 원인과 고치는 방법을 확인한다.
+호출이 이상하거나 `apply_*` 도구가 안 보이면 `doctor` 를 실행해 원인과 고치는 방법을 확인한다. (터미널에서는 `node bin/server.js doctor --fix` 로 설정 파일·권한·Chromium 을 자동 수정할 수 있다.)
 
 ## 1. 대상 API 찾기
 
@@ -36,6 +36,10 @@ datagokr MCP 도구를 아래 순서로 쓴다. 추측으로 호출하지 말고
 
 - `call_api { url 또는 endpoint, params }` — 키는 자동으로 붙는다. **`serviceKey` 를 params 에 넣지 않는다.**
 - 목록이 길면 `itemsOnly: true` (토큰 절약) 또는 `fetch_all { maxPages }` (전 페이지 순회).
+- 수백 건 이상이면 컨텍스트에 싣지 말고 `export_data { ..., format: "csv" }` 로 파일에 저장한 뒤 경로만 알려준다.
+- 여러 지역·월처럼 params 만 바꿔 반복하면 `batch_call { paramsList }` (호출 간격 자동, 최대 50건).
+- 같은 조회를 반복할 가능성이 있으면 `call_api` 에 `cacheSeconds` 를 줘서 트래픽을 아낀다.
+- 앱 코드에 붙일 때는 `api_types { idOrUrl }` 로 TypeScript 타입을 받아 쓴다.
 - 자주 쓰는 주소는 `save_endpoint` 로 별칭 등록해 두면 다음부터 `endpoint` 로 부른다.
 - 대량 호출 전 `quota_status` 로 오늘 호출량을 확인한다 (개발계정은 보통 일 1,000회).
 

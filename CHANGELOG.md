@@ -2,6 +2,21 @@
 
 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식, [SemVer](https://semver.org/lang/ko/) 를 따릅니다.
 
+## [1.2.0]
+
+### 추가
+- `export_data` — 전 페이지를 순회해 CSV(엑셀용 BOM)/JSON 파일로 저장하고 경로만 반환. 내보내기 폴더(`DATAGO_EXPORT_DIR`) 밖에는 쓰지 않고, `=` `+` `-` `@` 로 시작하는 CSV 셀은 수식 주입을 막도록 처리
+- `batch_call` — 같은 API 를 여러 params 로 차례 호출 (호출 간격 `intervalMs`, 최대 50건, `stopOnError`)
+- `api_types` — 명세에서 요청 변수/응답 항목의 TypeScript 인터페이스 생성
+- `call_api` 의 `cacheSeconds` — 성공 응답을 메모리 TTL/LRU 캐시에 보관해 일일 트래픽 절약
+- `doctor --fix` — 설정 파일 생성, 파일 권한(`chmod 600`), Chromium 설치를 자동 수정 (키·로그인은 건드리지 않음)
+- 영어 README 를 기본으로, 한국어는 `README.ko.md`
+- CI: 커버리지 요약 잡, 주간 보안 워크플로(`npm audit` + git 히스토리 자격증명 스캔), Dependabot
+
+### 개선
+- `fetch_all` 과 `export_data` 가 페이지 수집 로직을 공유
+- 테스트 97 → 127개
+
 ## [1.1.0]
 
 ### 추가
