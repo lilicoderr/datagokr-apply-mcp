@@ -13,7 +13,7 @@
 
 **English** · [한국어](README.ko.md)
 
-[Quick start](#quick-start) · [Tools](#tools-27) · [Recipes](docs/recipes.md) · [Error catalog](docs/error-catalog.md) · [Auto-apply](#auto-apply-for-api-keys) · [Security](#security) · [FAQ](#faq) · [Contributing](CONTRIBUTING.md)
+[Quick start](#quick-start) · [Tools](#tools-21) · [Recipes](docs/recipes.md) · [Error catalog](docs/error-catalog.md) · [Auto-apply](#auto-apply-for-api-keys) · [Security](#security) · [FAQ](#faq) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -29,7 +29,7 @@ data.go.kr (the Korean public data portal) makes you do a lot by hand before the
 
 | Pain point | What this server does |
 |---|---|
-| Search → detail → **apply → wait for approval → copy key**, all by clicking | **Submits the application for you** through browser automation (batch supported) |
+| Search → detail → **apply → wait for approval → copy key**, all by clicking | **Submits the application for you** through browser automation (one or many, key saved automatically) |
 | Service key **double-encoding** → `SERVICE_KEY_IS_NOT_REGISTERED (30)` | Detects the key form and **retries once with the other form** on code 30 |
 | Errors come back as **HTTP 200**; responses are JSON or XML at random | Parses both and turns `resultCode` into **a plain explanation plus a fix** |
 | Guessing parameters → `resultCode 10/11/12` | `describe_api` shows **URL, required params, response fields** first |
@@ -111,7 +111,7 @@ Add the same entry under `mcpServers` in `claude_desktop_config.json`.
 
 Copy [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) to `~/.claude/skills/datagokr/`. Claude will then follow **search → read spec → apply → call** whenever you ask for a public-data API.
 
-## Tools (27)
+## Tools (21)
 
 **Explore and call** — no login needed
 
@@ -120,15 +120,11 @@ Copy [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) to `~/.claude/skills
 | `search_datasets` | Keyword search for open APIs (title, category, provider, summary, application count) |
 | `find_apply_targets` | Keeps only **auto-approved REST** APIs and returns their ids (public pages, no browser) |
 | `describe_api` | Data id → **request URL, required/optional params, response fields, traffic limit** |
-| `api_types` | Spec → **TypeScript interfaces** for params, items and the response envelope |
-| `call_api` | Calls an API: auto key, double-encoding fix, JSON/XML parsing, retries, `itemsOnly`, `cacheSeconds` (TTL cache to save quota) |
+| `call_api` | Calls an API (GET): auto key, double-encoding fix, JSON/XML parsing, retries, `itemsOnly`, `cacheSeconds` (TTL cache to save quota) |
 | `fetch_all` | Walks every page and returns the merged items (`maxPages` cap) |
 | `export_data` | Saves the full result as **CSV (Excel-safe BOM) or JSON** and returns only the path — keeps big datasets out of the model's context |
-| `recommend_datasets` | Natural-language request → several portal searches → **ranked candidates** |
-| `infer_schema` | Live sample → per-field **types, missing rate, enums** |
-| `batch_call` | Calls one API with many param sets, throttled, max 50, optional stop-on-error |
 | `quota_status` | Today's (KST) per-key call count and estimated remaining quota |
-| `explain_error` · `list_error_codes` | `resultCode` → plain explanation |
+| `explain_error` | `resultCode` → plain explanation (no code → the full table) |
 
 **Keys and aliases**
 
@@ -143,8 +139,8 @@ Copy [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) to `~/.claude/skills
 |---|---|
 | `apply_login` | Opens a login window (non-blocking, password never stored) |
 | `apply_status` | Checks that the login session is still valid |
-| `apply_api` | Submits one application |
-| `apply_apis` | Batch apply (one shared browser, de-duplicated, stops at once if logged out) |
+| `apply_api` | Submits one application (`idOrUrl`) or many (`ids`, one shared browser, de-duplicated), then **reads the general auth key from My page and saves it** (masked in all output) |
+| `apply_get_key` | Re-reads the general auth key (Encoding/Decoding) from My page › Development account and saves it like `save_key` |
 | `my_applications` | Application status (pending/approved/rejected, counted) |
 
 **Diagnostics**
@@ -152,7 +148,6 @@ Copy [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) to `~/.claude/skills
 | Tool | What it does |
 |---|---|
 | `doctor` | Checks Node, keys, network, browser, session and usage, and says how to fix each (CLI: `doctor`, `doctor --fix`) |
-| `apply_guide` | Manual application walkthrough |
 
 ## Auto-apply for API keys
 
@@ -166,8 +161,10 @@ The flow Claude follows (each tool's description says what to do next):
 
 1. `apply_status` — am I logged in?
 2. If not, `apply_login` — **opens a window and returns immediately**. You only **log in by hand**. The session is saved every few seconds and the window closes once `apply_status` confirms it (usually a one-time step).
-3. `find_apply_targets` → `apply_api` / `apply_apis` — submit applications.
-4. `my_applications` to confirm approval → `save_key` → `call_api`.
+3. `find_apply_targets` → `apply_api` — submit one or many applications. On success the **general auth key is read from My page and saved automatically** (never printed in full). If that step fails, run `apply_get_key`.
+4. `call_api` — the saved key is attached for you. Use `my_applications` to check approval.
+
+> Live key retrieval depends on the portal's current My page markup. The extractor is unit-tested against a fixture with a fake key, but has not been verified against a logged-in portal; if it cannot find the key it says so and you can fall back to `save_key`.
 
 > Auto-apply works for **individual accounts and REST-type, auto-approved APIs**. LINK-type (external) and corporate-only APIs report "could not open the application form". Verified by applying for and getting 11 individual auto-approval APIs approved.
 
@@ -184,14 +181,16 @@ You can also get a key by hand: log in → **활용신청** on the API page → 
 | `DATAGO_STATE` | `$DATAGO_HOME/storage-state.json` | Explicit session file path |
 | `DATAGO_DEBUG` | off | `1` = debug logs to stderr (service key, cookies and stored keys masked as `***`) |
 | `DATAGO_LOG_LEVEL` / `DATAGO_LOG_FORMAT` | off / `json` | `error\|warn\|info\|debug`; `text` for plain lines |
-| `DATAGO_ALLOWED_HOSTS` | (any public host) | Comma-separated domains `call_api` may contact |
-| `DATAGO_ALLOW_LOCAL` | off | `1` allows loopback/private targets (blocked by default) |
+| `DATAGO_ALLOWED_HOSTS` | `data.go.kr`, `*.go.kr`, `*.or.kr` | Comma-separated domains (and subdomains) the service key may be sent to; replaces the default list |
+| `DATAGO_ALLOW_LOCAL` | off | `1` disables the host allowlist and private-address checks (tests/development only) |
 
 ## Security
 
 - **Passwords are never received, stored or logged.** You log in yourself in the browser.
 - Only the session cookie is kept, in your **home folder** (`~/.datagokr-mcp/`, outside the repo) and listed in `.gitignore`, so it cannot be committed.
 - The key file is written **atomically** (an interrupted write cannot corrupt it) with `0600` permissions on POSIX. A corrupt file is **backed up first**, so keys never vanish silently.
+- `call_api` / `fetch_all` / `export_data` send the service key **only to public-data hosts** (`data.go.kr`, `*.go.kr`, `*.or.kr`, or your `DATAGO_ALLOWED_HOSTS`), resolve the hostname and refuse loopback/private/link-local addresses, and never follow redirects.
+- The auth key read by auto-apply is saved only to your key file; every tool output and log shows it masked.
 - `list_keys` and `doctor` mask keys; the usage file holds no key values.
 - `export_data` writes only inside the export folder, and CSV cells that start with `=`, `+`, `-` or `@` are neutralised against spreadsheet formula injection.
 - CI scans the full git history for committed credentials and runs `npm audit` weekly.

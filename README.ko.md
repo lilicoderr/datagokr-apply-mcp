@@ -100,7 +100,7 @@ claude mcp add datagokr -- node /절대경로/datagokr-apply-mcp/bin/server.js
 
 [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) 를 `~/.claude/skills/datagokr/` 에 복사하면, "공공데이터 API 써줘" 같은 요청에서 Claude 가 **검색 → 명세 확인 → 신청 → 호출** 순서를 따릅니다.
 
-## 도구 (25개)
+## 도구 (21개)
 
 **호출 · 탐색** — 로그인 불필요
 
@@ -109,13 +109,11 @@ claude mcp add datagokr -- node /절대경로/datagokr-apply-mcp/bin/server.js
 | `search_datasets` | 키워드로 오픈API 검색 (제목·분류·기관·요약·활용신청 수) |
 | `find_apply_targets` | 키워드로 **개발단계 자동승인 REST** API 만 골라 id 목록 (브라우저 없이 공개 페이지 기반) |
 | `describe_api` | 데이터 id → **요청주소 · 필수/선택 파라미터 · 응답 항목 · 트래픽** |
-| `api_types` | 명세 → **TypeScript 인터페이스**(요청 변수 · 응답 항목) 생성 |
 | `call_api` | 오픈API 호출. 키 자동 부착, 이중 인코딩 보정, JSON/XML 해석, 재시도, `itemsOnly`, `cacheSeconds`(TTL 캐시로 트래픽 절약) |
 | `fetch_all` | 페이지네이션 자동 순회 → 항목만 합쳐 반환 (`maxPages` 상한) |
 | `export_data` | 전체 결과를 **CSV(엑셀용 BOM)/JSON 파일**로 저장하고 경로만 반환 (AI 컨텍스트 절약) |
-| `batch_call` | 같은 API 를 여러 params 로 차례 호출 (호출 간격 제한, 최대 50건, 실패 시 중단 옵션) |
 | `quota_status` | 오늘(KST) 키별 호출량 · 남은 한도 추정 |
-| `explain_error` · `list_error_codes` | `resultCode` → 한글 설명 |
+| `explain_error` | `resultCode` → 한글 설명 (code 생략 시 전체 표) |
 
 **키 · 별칭 관리**
 
@@ -130,8 +128,8 @@ claude mcp add datagokr -- node /절대경로/datagokr-apply-mcp/bin/server.js
 |---|---|
 | `apply_login` | 로그인 창 열기 (논블로킹, 비밀번호 미저장) |
 | `apply_status` | 로그인 세션 유효 여부 확인 |
-| `apply_api` | API 1건 활용신청 제출 |
-| `apply_apis` | 여러 건 **일괄 신청** (브라우저 1개 재사용, 중복 제거, 로그인 없으면 즉시 중단) |
+| `apply_api` | 활용신청 제출 — 1건(`idOrUrl`) 또는 여러 건(`ids`, 브라우저 1개 재사용·중복 제거). 성공하면 **마이페이지의 일반 인증키를 읽어 자동 저장**(모든 출력에서 마스킹) |
+| `apply_get_key` | 마이페이지 > 개발계정의 일반 인증키(Encoding/Decoding)를 다시 읽어 `save_key` 처럼 저장 |
 | `my_applications` | 신청/승인/반려 현황 (상태별 집계) |
 
 **진단**
@@ -139,7 +137,6 @@ claude mcp add datagokr -- node /절대경로/datagokr-apply-mcp/bin/server.js
 | 도구 | 설명 |
 |---|---|
 | `doctor` | Node · 키 · 네트워크 · 브라우저 · 세션 · 호출량 점검 + 고치는 방법 (CLI: `node bin/server.js doctor`, 설정 파일·권한·Chromium 은 `doctor --fix` 로 자동 수정) |
-| `apply_guide` | 수동 활용신청 절차 안내 |
 
 ## 활용신청 자동화
 
@@ -153,8 +150,10 @@ Claude 가 따르는 흐름 (각 도구 설명에 "다음에 뭘 할지"가 들�
 
 1. `apply_status` — 로그인됐는지 확인
 2. 안 돼 있으면 `apply_login` — **창만 열고 바로 반환**합니다. 그 창에서 **직접 로그인만** 하면 됩니다. 세션은 몇 초마다 자동 저장되고, 다음 `apply_status` 가 로그인을 확인하면 창이 닫힙니다. (보통 최초 1회)
-3. `find_apply_targets` → `apply_api` / `apply_apis` — 신청 제출
-4. `my_applications` 로 승인 확인 → 발급 키를 `save_key` 로 저장 → `call_api`
+3. `find_apply_targets` → `apply_api` — 1건 또는 `ids` 로 여러 건 신청. 성공하면 **인증키를 마이페이지에서 자동으로 읽어 저장**합니다(원문 미출력). 실패하면 `apply_get_key`.
+4. `call_api` — 저장된 키가 자동으로 붙습니다. 승인 여부는 `my_applications`.
+
+> 인증키 자동 수집은 포털 마이페이지의 현재 마크업에 의존합니다. 추출 로직은 가짜 키 픽스처로 단위 테스트했지만 실제 로그인 상태의 포털에서는 아직 검증되지 않았습니다. 못 찾으면 그렇게 알려 주고 `save_key` 로 직접 저장하면 됩니다.
 
 > 자동신청은 **개인회원 + REST형 자동승인 API** 에서 동작합니다. LINK형(외부 바로가기)·기업회원 전용 API 는 "신청 폼을 열지 못했다"고 알려줍니다. 개인회원 자동승인 API 11건 신청·승인으로 검증했습니다.
 
@@ -169,6 +168,8 @@ Claude 가 따르는 흐름 (각 도구 설명에 "다음에 뭘 할지"가 들�
 | `DATAGO_EXPORT_DIR` | `~/datago-exports` | `export_data` 가 파일을 만드는 폴더 (이 밖에는 저장하지 않음) |
 | `DATAGO_HOME` | `~/.datagokr-mcp` | 로그인 세션(쿠키) 폴더 |
 | `DATAGO_STATE` | `$DATAGO_HOME/storage-state.json` | 세션 파일 경로 직접 지정 |
+| `DATAGO_ALLOWED_HOSTS` | `data.go.kr`, `*.go.kr`, `*.or.kr` | 서비스 키를 보낼 수 있는 도메인(하위 포함, 쉼표 구분). 지정하면 기본 목록을 대체 |
+| `DATAGO_ALLOW_LOCAL` | (꺼짐) | `1` 이면 호스트 허용목록·사설주소 검사를 끔 (테스트/개발 전용) |
 | `DATAGO_DEBUG` | (꺼짐) | `1` 이면 요청 URL·응답 상태·소요 시간을 stderr 로 출력 (서비스 키는 `***` 로 가림) |
 
 ## 보안
@@ -176,6 +177,8 @@ Claude 가 따르는 흐름 (각 도구 설명에 "다음에 뭘 할지"가 들�
 - **비밀번호를 받지도, 저장하지도, 로그로 남기지도 않습니다.** 로그인은 사람이 브라우저에서 직접 합니다.
 - 로그인 뒤 세션 쿠키만 **홈 폴더**(`~/.datagokr-mcp/`, 저장소 밖)에 보관합니다. `.gitignore` 에도 등록돼 있어 커밋될 수 없습니다.
 - 서비스 키 파일은 **원자적으로 저장**되고(쓰다 중단돼도 안 깨짐), POSIX 에서는 `0600` 권한으로 만들어집니다. 파일이 손상돼도 **백업 후** 진행해 키가 조용히 사라지지 않습니다.
+- `call_api` / `fetch_all` / `export_data` 는 서비스 키를 **공공데이터 호스트**(`data.go.kr`, `*.go.kr`, `*.or.kr`, 또는 `DATAGO_ALLOWED_HOSTS`)로만 보내고, 호스트명을 DNS 로 풀어 루프백/사설/링크로컬 주소면 거부하며, 리다이렉트는 따라가지 않습니다.
+- 활용신청 뒤 자동으로 읽은 인증키는 키 파일에만 저장되고, 모든 도구 출력·로그에는 마스킹돼 나옵니다.
 - `list_keys` / `doctor` 는 키를 마스킹해서 보여주며, 호출량 집계 파일에는 키 값이 들어가지 않습니다.
 - 취약점 신고는 [SECURITY.md](SECURITY.md) 를 참고하세요.
 
