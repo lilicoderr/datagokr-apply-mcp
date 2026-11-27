@@ -37,7 +37,7 @@ data.go.kr (the Korean public data portal) makes you do a lot by hand before the
 | Results span many pages | `fetch_all` / `export_data` **walk every page** |
 | Daily quota (usually 1,000 calls) | `quota_status` estimates today's usage; `cacheSeconds` avoids repeat calls |
 
-There are **zero runtime dependencies**: it uses Node's built-in `fetch` and implements the MCP protocol itself. Only the optional auto-apply feature needs `playwright-core`.
+There are **zero runtime dependencies**: it uses only Node's built-in modules and implements the MCP protocol itself. Only the optional auto-apply feature needs `playwright-core`.
 
 ## Demo
 
@@ -47,23 +47,23 @@ A sample conversation (tool output abbreviated):
 You     ▸ Find the public-holiday API and tell me how to call it
 
 Claude  ▸ search_datasets { query: "특일 정보" }
-        ▸ describe_api { idOrUrl: "15012690" }
-          URL: …/SpcdeInfoService/getAnniversaryInfo
-          [required] pageNo, numOfRows, solYear   [optional] solMonth
+        ▸ describe_api { idOrUrl: "15012690", operation: "공휴일", saveAs: "holidays" }
+          URL: …/SpcdeInfoService/getRestDeInfo
+          [required] solYear   [optional] solMonth
         ▸ apply_status → apply_api { idOrUrl: "15012690" }   # no key yet? applies automatically
         ▸ call_api { endpoint: "holidays", params: { solYear: 2025, solMonth: "05" }, itemsOnly: true }
           ok · resultCode 00 · key encoding: Decoding · 1 attempt
 ```
 
-Real output of `describe_api` (portal page 15012690, field values are Korean as served by the portal):
+Excerpt of real `describe_api` output (portal page 15012690; trimmed, values are Korean as served by the portal):
 
 ```jsonc
 {
-  "제목": "한국천문연구원_특일 정보",
-  "트래픽": "개발계정 : 10,000 / 운영계정 : 활용사례 등록시 신청하면 트래픽 증가 가능",
-  "요청주소": "https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getAnniversaryInfo",
-  "상세기능": ["기념일 정보 조회", "공휴일 정보 조회", "국경일 정보조회", "24절기 정보 조회", "잡절 정보 조회"],
-  "요청변수": ["[필수] pageNo(페이지 번호) 예:1", "[필수] solYear(연) 예:2019", "[선택] solMonth(월) 예:02"]
+  "title": "한국천문연구원_특일 정보",
+  "traffic": "개발계정 : 10,000 / 운영계정 : 활용사례 등록시 신청하면 트래픽 증가 가능",
+  "endpoint": "https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getAnniversaryInfo",
+  "operations": ["기념일 정보 조회", "공휴일 정보 조회", "국경일 정보조회", "24절기 정보 조회", "잡절 정보 조회"],
+  "request": ["[필수] pageNo(페이지 번호) 예:1 — 페이지번호", "[필수] solYear(연) 예:2019 — 연", "[선택] solMonth(월) 예:02 — 월"]
 }
 ```
 
@@ -126,6 +126,8 @@ Copy [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) to `~/.claude/skills
 
 ## Tools (21)
 
+Without `playwright-core` the server lists 17: the five auto-apply tools are replaced by `apply_setup`, which explains how to enable them.
+
 **Explore and call** — no login needed
 
 | Tool | What it does |
@@ -134,7 +136,7 @@ Copy [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) to `~/.claude/skills
 | `find_apply_targets` | Keeps only **auto-approved REST** APIs and returns their ids (public pages, no browser) |
 | `describe_api` | Data id → **request URL, required/optional params, response fields, traffic limit**. Pass `operation` (id or name part) to read another function of a multi-operation API |
 | `call_api` | Calls an API (GET): auto key, double-encoding fix, JSON/XML parsing, retries, `itemsOnly`, `cacheSeconds` (TTL cache to save quota). After `describe_api` it **refuses to spend quota when a required param is missing** (`skipValidation:true` overrides) and warns on unknown param names |
-| `fetch_all` | Walks every page and returns the merged items (`maxPages` cap) |
+| `fetch_all` | Walks every page and returns the merged items (`maxPages` default 5, max 50; `truncated` marks partial results). Same required-param check as `call_api` |
 | `export_data` | Saves the full result as **CSV (Excel-safe BOM) or JSON** and returns only the path — keeps big datasets out of the model's context |
 | `quota_status` | Today's (KST) per-key call count and estimated remaining quota |
 | `explain_error` | `resultCode` → plain explanation (no code → the full table) |
@@ -162,6 +164,8 @@ Copy [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) to `~/.claude/skills
 |---|---|
 | `doctor` | Checks Node, keys, network, browser, session and usage, and says how to fix each (CLI: `doctor`, `doctor --fix`) |
 
+The server also exposes MCP resources (`datago://keys` masked, `datago://endpoints`, `datago://usage`, `datago://guide/usage`) and the `find-and-call-api` prompt.
+
 ## Auto-apply for API keys
 
 ```bash
@@ -178,7 +182,7 @@ The flow Claude follows (each tool's description says what to do next):
 3. `find_apply_targets` → `apply_api` — submit one or many applications. On success the **general auth key is read from My page and saved automatically** (never printed in full). If that step fails, run `apply_get_key`.
 4. `call_api` — the saved key is attached for you. Right after approval it can take 1-2 h to activate (`resultCode` 20/30); `my_applications` shows the approval state.
 
-Every `apply_*` result carries a Korean `message`, an English `hint` and a `next` field naming the next tool to call. Errors from any tool follow the same convention (`error` + `hint`).
+`apply_*` results carry a Korean `message`, an English `hint` and, when there is a follow-up step, a `next` field. A tool that throws returns `error` + `hint`.
 
 > **Not verified against the live portal yet.** Automatic key retrieval depends on the portal's My page markup and the portal URLs it tries were never checked against a real logged-in page. The extractor is only unit-tested on fixtures with fake keys. A value is saved only if it passes validation (Encoding decodes to Decoding, 40–200 chars, sane charset); otherwise nothing is saved. A different key already saved under the same name is never overwritten (the new one goes to `<name>-2`). **Fallback:** copy the general auth key from My page > Development account on data.go.kr and run `save_key`.
 
@@ -205,7 +209,9 @@ You can also get a key by hand: log in → **활용신청** on the API page → 
 - **Passwords are never received, stored or logged.** You log in yourself in the browser.
 - Only the session cookie is kept, in your **home folder** (`~/.datagokr-mcp/`, outside the repo) and listed in `.gitignore`, so it cannot be committed.
 - The key file is written **atomically** (an interrupted write cannot corrupt it) with `0600` permissions on POSIX. A corrupt file is **backed up first**, so keys never vanish silently.
-- `call_api` / `fetch_all` / `export_data` send the service key **only to public-data hosts** (`data.go.kr`, `*.go.kr`, `*.or.kr`, or your `DATAGO_ALLOWED_HOSTS`), resolve the hostname and refuse loopback/private/link-local addresses, and never follow redirects.
+- `call_api` / `fetch_all` / `export_data` send the service key **only to allowed hosts** (`data.go.kr`, `*.go.kr`, `*.or.kr`, or your `DATAGO_ALLOWED_HOSTS`) and never follow redirects. Loopback, private, link-local and reserved addresses (including IPv4 wrapped in IPv6) are refused, and the check runs on **the same DNS answer the connection uses**, so DNS rebinding cannot swap the address in between.
+- If a server echoes the request, the key is replaced with `***` before it reaches tool output or export files. `list_endpoints` masks a `serviceKey` pasted into a saved URL or its params.
+- **Limits:** `*.or.kr` is not restricted to government bodies. To be strict, set `DATAGO_ALLOWED_HOSTS=data.go.kr` (add each agency host you need). Many agency APIs are plain `http://`, where the key travels unencrypted; use `https://` when the API supports it. Masking cannot catch a key that a server returns transformed (for example split or base64-wrapped).
 - The auth key read by auto-apply is saved only to your key file; every tool output and log shows it masked.
 - `list_keys` and `doctor` mask keys; the usage file holds no key values.
 - `export_data` writes only inside the export folder, and CSV cells that start with `=`, `+`, `-` or `@` are neutralised against spreadsheet formula injection.
@@ -242,22 +248,21 @@ Search, spec and apply rely on portal HTML. The parsers are pure functions ([`sr
 
 ```
 datagokr-apply-mcp/
-├─ bin/server.js        stdio MCP entry · doctor · --version
+├─ bin/server.js        stdio MCP entry · doctor · --print-config · --version
 ├─ src/
 │  ├─ mcp.js            MCP server (JSON-RPC 2.0 over stdio, no deps)
-│  ├─ datago.js         calls · key encoding · resultCode mapping · backoff
-│  ├─ items.js          normalises responses to items/paging (JSON/XML)
-│  ├─ portal.js         portal detail/search page parsers
-│  ├─ registry.js       key/endpoint store (atomic writes, corrupt-file backup)
-│  ├─ usage.js          daily call counts (KST)
-│  ├─ cache.js          TTL/LRU response cache
-│  ├─ export.js         CSV/JSON export (path escape and formula injection guards)
-│  ├─ hints.js          spec → TypeScript types
-│  ├─ doctor.js         environment checks · --fix
-│  ├─ xml.js            tiny XML → object parser
 │  ├─ tools.js          call / explore / key tools
-│  ├─ apply.js          auto-apply (Playwright)
-│  └─ tools-apply.js    auto-apply tools
+│  ├─ datago.js         calls · key encoding · resultCode mapping · backoff
+│  ├─ security.js       host allowlist · address checks · key scrubbing
+│  ├─ safefetch.js      HTTP client that checks the address it connects to
+│  ├─ portal.js         portal detail/search page parsers
+│  ├─ items.js, xml.js  response → items/paging normalisation · tiny XML parser
+│  ├─ registry.js       key/endpoint store (atomic writes, corrupt-file backup)
+│  ├─ usage.js, cache.js, breaker.js   daily call counts (KST) · TTL cache · circuit breaker
+│  ├─ export.js         CSV/JSON export (path escape and formula injection guards)
+│  ├─ apply.js, tools-apply.js, keyextract.js   auto-apply (Playwright)
+│  ├─ doctor.js, selfcheck.js, printconfig.js   environment checks · install verification · client snippets
+│  └─ ...               logging, resources/prompts, output schemas, hints
 ├─ skills/datagokr/     Claude Code skill
 └─ test/                node:test (+ real-page fixtures)
 ```
@@ -265,7 +270,9 @@ datagokr-apply-mcp/
 ## Development
 
 ```bash
-npm test                              # everything runs offline (fetch is injected)
+npm ci                                # dev tools (typescript) + optional playwright-core
+npm test                              # runs offline (fetch is injected, local test servers)
+npm run typecheck
 node --test --experimental-test-coverage
 node bin/server.js doctor
 ```

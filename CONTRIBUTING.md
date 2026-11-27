@@ -7,7 +7,8 @@
 ```bash
 git clone https://github.com/lilicoderr/datagokr-apply-mcp.git
 cd datagokr-apply-mcp
-npm test                       # Node 20+ — 설치할 의존성 없음
+npm test                       # Node 20+ — 런타임 의존성 없음
+npm ci && npm run typecheck    # 타입 검사에만 개발 의존성이 필요
 node bin/server.js doctor      # 환경 점검
 ```
 

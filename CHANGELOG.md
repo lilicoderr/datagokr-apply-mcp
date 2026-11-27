@@ -2,6 +2,21 @@
 
 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식, [SemVer](https://semver.org/lang/ko/) 를 따릅니다.
 
+## [Unreleased]
+
+### 보안
+- DNS rebinding: 검사와 연결이 DNS 를 따로 조회하던 것을, 연결에 쓰는 응답을 검사하는 `src/safefetch.js`(node:http/https)로 교체
+- 사설 주소 판정을 `net.BlockList` 로 바꿔 IPv6 로 감싼 IPv4(NAT64·6to4·호환 주소)와 멀티캐스트/예약 대역, 끝점(`localhost.`) 차단
+- 서버가 되비춘 서비스 키를 응답·네트워크 오류에서 `***` 처리, 로거는 인코딩 형태까지 마스킹
+- URL 형식 오류 메시지, `list_endpoints`, 손상 설정 파일 알림에서 키가 노출되던 문제
+- `toString` 같은 상속 속성 이름이 저장된 키/별칭으로 취급되던 문제
+
+### 수정
+- 직접 넘긴 키의 호출이 기본 키의 캐시·호출량으로 섞이던 문제, `fetch_all`/`export_data` 스키마에 `skipValidation` 선언, 중간 페이지 실패 시 `truncated: true`, `COM¹` 류 Windows 장치 이름 처리
+
+### 문서
+- README(en/ko)·스킬·레시피를 stdio 로 확인한 도구 목록과 실제 출력에 맞춤
+
 ## [2.1.0]
 
 핵심 흐름(검색 → 명세 → 신청 → 키 → 호출)의 견고성·안내를 다듬었습니다. 새 도구는 없습니다(21개 그대로).

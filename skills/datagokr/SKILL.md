@@ -47,7 +47,7 @@ datagokr MCP 도구를 아래 순서로 쓴다. 추측으로 호출하지 말고
 
 ## 에러 해석
 
-모든 도구의 실패/안내 응답에는 영어 `hint` 와 한국어 `message` 가 있고, `apply_*` 결과의 `next` 는 다음에 부를 도구를 알려준다. `call_api` 는 `summary.hint` 가 조치 방법을 알려준다. 더 필요하면 `explain_error { code }`.
+도구가 오류를 던지면 `error` 와 영어 `hint` 가 온다. `apply_*` 결과에는 한국어 `message`, 영어 `hint`, 후속 단계가 있으면 `next` 가 있다. `call_api` 실패는 `summary.hint`(영어)와 `summary.advice`(한국어)가 조치 방법을 알려준다. 더 필요하면 `explain_error { code }`.
 
 | resultCode | 의미 | 할 일 |
 |---|---|---|
@@ -60,6 +60,6 @@ datagokr MCP 도구를 아래 순서로 쓴다. 추측으로 호출하지 말고
 ## 하지 말 것
 
 - 사용자의 포털 비밀번호를 묻거나 저장하지 않는다. 로그인은 사용자가 창에서 직접 한다.
-- 키 전체를 응답/로그에 그대로 출력하지 않는다 (`list_keys` 는 마스킹된다).
+- 키 원문을 응답/로그에 옮겨 적지 않는다 (`list_keys`, `apply_api`, `apply_get_key` 는 마스킹된 값만 돌려준다).
 - 일괄 신청은 사용자가 요청한 범위로만 한다.
-- 키 원문을 응답에 옮겨 적지 않는다 (`apply_api`/`apply_get_key` 는 마스킹된 값만 돌려준다).
+

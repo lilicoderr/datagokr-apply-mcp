@@ -11,7 +11,7 @@ Contents: [1. Public holidays](#1-public-holidays-for-a-calendar-app) · [2. Air
 > "Find the Korean public-holiday API, apply for it, and get 2026's holidays."
 
 1. `search_datasets { query: "공휴일 특일 정보" }` — candidates (the KASI 특일 정보 API, id `15012690`, is usually first).
-2. `describe_api { idOrUrl: "15012690" }` — shows the `getRestDeInfo` operation, required `solYear`, optional `solMonth`.
+2. `describe_api { idOrUrl: "15012690", operation: "공휴일" }` — the `getRestDeInfo` operation: required `solYear`, optional `solMonth`. (Without `operation` you get the first function, `getAnniversaryInfo`.)
 3. No key yet? `apply_status` → `apply_login` (once) → `apply_api { idOrUrl: "15012690" }` — applies and saves the key automatically.
 4. `save_endpoint { alias: "holidays", url: "…/SpcdeInfoService/getRestDeInfo", params: { numOfRows: 50 } }`
 5. `call_api { endpoint: "holidays", params: { solYear: 2026 }, itemsOnly: true, cacheSeconds: 86400 }`

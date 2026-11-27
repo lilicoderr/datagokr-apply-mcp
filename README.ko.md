@@ -12,7 +12,7 @@
 
 [English](README.md) · **한국어**
 
-[빠른 시작](#빠른-시작) · [도구 목록](#도구-25개) · [활용신청 자동화](#활용신청-자동화) · [보안](#보안) · [FAQ](#faq) · [기여하기](CONTRIBUTING.md)
+[빠른 시작](#빠른-시작) · [도구 목록](#도구-21개) · [활용신청 자동화](#활용신청-자동화) · [보안](#보안) · [FAQ](#faq) · [기여하기](CONTRIBUTING.md)
 
 </div>
 
@@ -36,7 +36,7 @@
 | 결과가 여러 페이지 | `fetch_all` 이 **전 페이지 자동 순회** |
 | 일일 트래픽(보통 1,000회) 초과 | `quota_status` 로 **오늘 호출량 추정** |
 
-런타임 의존성은 **0개**입니다 (Node 내장 `fetch`만 사용, MCP 프로토콜도 직접 구현). 활용신청 자동화만 선택적으로 `playwright-core` 를 씁니다.
+런타임 의존성은 **0개**입니다 (Node 내장 모듈만 사용, MCP 프로토콜도 직접 구현). 활용신청 자동화만 선택적으로 `playwright-core` 를 씁니다.
 
 ## 데모
 
@@ -46,23 +46,23 @@
 You     ▸ 공휴일 조회 API 찾아서 어떻게 부르는지 알려줘
 
 Claude  ▸ search_datasets { query: "특일 정보" }
-        ▸ describe_api { idOrUrl: "15012690" }
-          요청주소: …/SpcdeInfoService/getAnniversaryInfo
-          [필수] pageNo, numOfRows, solYear   [선택] solMonth
+        ▸ describe_api { idOrUrl: "15012690", operation: "공휴일", saveAs: "특일정보" }
+          요청주소: …/SpcdeInfoService/getRestDeInfo
+          [필수] solYear   [선택] solMonth
         ▸ apply_status → apply_api { idOrUrl: "15012690" }   # 키가 없다면 활용신청까지 자동
         ▸ call_api { endpoint: "특일정보", params: { solYear: 2025, solMonth: "05" }, itemsOnly: true }
           ok · resultCode 00 · 키인코딩 Decoding · 시도 1회
 ```
 
-`describe_api` 의 **실제 출력** (포털 15012690 상세 페이지 기준):
+`describe_api` **실제 출력 발췌** (포털 15012690 상세 페이지 기준, 일부 생략):
 
 ```jsonc
 {
-  "제목": "한국천문연구원_특일 정보",
-  "트래픽": "개발계정 : 10,000 / 운영계정 : 활용사례 등록시 신청하면 트래픽 증가 가능",
-  "요청주소": "https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getAnniversaryInfo",
-  "상세기능": ["기념일 정보 조회", "공휴일 정보 조회", "국경일 정보조회", "24절기 정보 조회", "잡절 정보 조회"],
-  "요청변수": ["[필수] pageNo(페이지 번호) 예:1", "[필수] solYear(연) 예:2019", "[선택] solMonth(월) 예:02"]
+  "title": "한국천문연구원_특일 정보",
+  "traffic": "개발계정 : 10,000 / 운영계정 : 활용사례 등록시 신청하면 트래픽 증가 가능",
+  "endpoint": "https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getAnniversaryInfo",
+  "operations": ["기념일 정보 조회", "공휴일 정보 조회", "국경일 정보조회", "24절기 정보 조회", "잡절 정보 조회"],
+  "request": ["[필수] pageNo(페이지 번호) 예:1 — 페이지번호", "[필수] solYear(연) 예:2019 — 연", "[선택] solMonth(월) 예:02 — 월"]
 }
 ```
 
@@ -112,15 +112,17 @@ claude mcp add datagokr -- node /절대경로/datagokr-apply-mcp/bin/server.js
 
 ## 도구 (21개)
 
+`playwright-core` 가 없으면 17개가 보여요: 활용신청 도구 5개 대신 켜는 방법을 알려주는 `apply_setup` 이 나옵니다.
+
 **호출 · 탐색** — 로그인 불필요
 
 | 도구 | 설명 |
 |---|---|
 | `search_datasets` | 키워드로 오픈API 검색 (제목·분류·기관·요약·활용신청 수) |
 | `find_apply_targets` | 키워드로 **개발단계 자동승인 REST** API 만 골라 id 목록 (브라우저 없이 공개 페이지 기반) |
-| `describe_api` | 데이터 id → **요청주소 · 필수/선택 파라미터 · 응답 항목 · 트래픽** |
-| `call_api` | 오픈API 호출. 키 자동 부착, 이중 인코딩 보정, JSON/XML 해석, 재시도, `itemsOnly`, `cacheSeconds`(TTL 캐시로 트래픽 절약) |
-| `fetch_all` | 페이지네이션 자동 순회 → 항목만 합쳐 반환 (`maxPages` 상한) |
+| `describe_api` | 데이터 id → **요청주소 · 필수/선택 파라미터 · 응답 항목 · 트래픽**. 상세기능이 여러 개면 `operation`(id 또는 이름 일부)으로 선택 |
+| `call_api` | 오픈API 호출. 키 자동 부착, 이중 인코딩 보정, JSON/XML 해석, 재시도, `itemsOnly`, `cacheSeconds`(TTL 캐시로 트래픽 절약). `describe_api` 로 명세를 본 뒤 필수 변수가 빠지면 **호출하지 않음**(`skipValidation:true` 로 우회) |
+| `fetch_all` | 페이지네이션 자동 순회 → 항목만 합쳐 반환 (`maxPages` 기본 5, 최대 50. 일부만 받으면 `truncated`) |
 | `export_data` | 전체 결과를 **CSV(엑셀용 BOM)/JSON 파일**로 저장하고 경로만 반환 (AI 컨텍스트 절약) |
 | `quota_status` | 오늘(KST) 키별 호출량 · 남은 한도 추정 |
 | `explain_error` | `resultCode` → 한글 설명 (code 생략 시 전체 표) |
@@ -147,6 +149,8 @@ claude mcp add datagokr -- node /절대경로/datagokr-apply-mcp/bin/server.js
 | 도구 | 설명 |
 |---|---|
 | `doctor` | Node · 키 · 네트워크 · 브라우저 · 세션 · 호출량 점검 + 고치는 방법 (CLI: `node bin/server.js doctor`, 설정 파일·권한·Chromium 은 `doctor --fix` 로 자동 수정) |
+
+MCP 리소스(`datago://keys`(마스킹) · `datago://endpoints` · `datago://usage` · `datago://guide/usage`)와 `find-and-call-api` 프롬프트도 제공합니다. 클라이언트별 설정 스니펫은 `node bin/server.js --print-config` 로 출력해요.
 
 ## 활용신청 자동화
 
@@ -180,6 +184,7 @@ Claude 가 따르는 흐름 (각 도구 설명에 "다음에 뭘 할지"가 들�
 | `DATAGO_STATE` | `$DATAGO_HOME/storage-state.json` | 세션 파일 경로 직접 지정 |
 | `DATAGO_ALLOWED_HOSTS` | `data.go.kr`, `*.go.kr`, `*.or.kr` | 서비스 키를 보낼 수 있는 도메인(하위 포함, 쉼표 구분). 지정하면 기본 목록을 대체 |
 | `DATAGO_ALLOW_LOCAL` | (꺼짐) | `1` 이면 호스트 허용목록·사설주소 검사를 끔 (테스트/개발 전용) |
+| `DATAGO_LOG_LEVEL` / `DATAGO_LOG_FORMAT` | (꺼짐) / `json` | `error\|warn\|info\|debug`, `text` 는 평문 |
 | `DATAGO_DEBUG` | (꺼짐) | `1` 이면 요청 URL·응답 상태·소요 시간을 stderr 로 출력 (서비스 키는 `***` 로 가림) |
 
 ## 보안
@@ -187,7 +192,10 @@ Claude 가 따르는 흐름 (각 도구 설명에 "다음에 뭘 할지"가 들�
 - **비밀번호를 받지도, 저장하지도, 로그로 남기지도 않습니다.** 로그인은 사람이 브라우저에서 직접 합니다.
 - 로그인 뒤 세션 쿠키만 **홈 폴더**(`~/.datagokr-mcp/`, 저장소 밖)에 보관합니다. `.gitignore` 에도 등록돼 있어 커밋될 수 없습니다.
 - 서비스 키 파일은 **원자적으로 저장**되고(쓰다 중단돼도 안 깨짐), POSIX 에서는 `0600` 권한으로 만들어집니다. 파일이 손상돼도 **백업 후** 진행해 키가 조용히 사라지지 않습니다.
-- `call_api` / `fetch_all` / `export_data` 는 서비스 키를 **공공데이터 호스트**(`data.go.kr`, `*.go.kr`, `*.or.kr`, 또는 `DATAGO_ALLOWED_HOSTS`)로만 보내고, 호스트명을 DNS 로 풀어 루프백/사설/링크로컬 주소면 거부하며, 리다이렉트는 따라가지 않습니다.
+- `call_api` / `fetch_all` / `export_data` 는 서비스 키를 **허용된 호스트**(`data.go.kr`, `*.go.kr`, `*.or.kr`, 또는 `DATAGO_ALLOWED_HOSTS`)로만 보내고 리다이렉트는 따라가지 않습니다. 루프백·사설·링크로컬·예약 대역(IPv6 로 감싼 IPv4 포함)은 거부하며, **실제 연결에 쓰는 DNS 응답**을 검사하므로 DNS rebinding 으로 검사 후 주소를 바꿀 수 없습니다.
+- 서버가 요청을 되비춰도 도구 출력과 내보내기 파일에 들어가기 전에 키를 `***` 로 가립니다. `list_endpoints` 는 저장한 URL/params 에 붙여 넣은 `serviceKey` 를 가려서 보여줍니다.
+- **한계:** `*.or.kr` 는 정부 기관만 쓰는 도메인이 아닙니다. 엄격하게 쓰려면 `DATAGO_ALLOWED_HOSTS=data.go.kr` 로 좁히고 필요한 기관 호스트만 추가하세요. 많은 기관 API 가 평문 `http://` 라 키가 암호화 없이 전송되니 지원하면 `https://` 를 쓰세요. 서버가 키를 변형해(쪼개기, base64 등) 돌려주면 가리지 못합니다.
+- `export_data` 는 내보내기 폴더 안에만 저장하고, `=` `+` `-` `@` 로 시작하는 CSV 셀은 수식 주입을 막기 위해 무력화합니다.
 - 활용신청 뒤 자동으로 읽은 인증키는 키 파일에만 저장되고, 모든 도구 출력·로그에는 마스킹돼 나옵니다.
 - `list_keys` / `doctor` 는 키를 마스킹해서 보여주며, 호출량 집계 파일에는 키 값이 들어가지 않습니다.
 - 취약점 신고는 [SECURITY.md](SECURITY.md) 를 참고하세요.
@@ -222,22 +230,21 @@ Claude 가 따르는 흐름 (각 도구 설명에 "다음에 뭘 할지"가 들�
 
 ```
 datagokr-apply-mcp/
-├─ bin/server.js        stdio MCP 엔트리 · doctor · --version
+├─ bin/server.js        stdio MCP 엔트리 · doctor · --print-config · --version
 ├─ src/
 │  ├─ mcp.js            MCP 서버 (JSON-RPC 2.0 / stdio, 무의존성)
-│  ├─ datago.js         호출 · 키 인코딩 · resultCode 해석 · 백오프 재시도
-│  ├─ items.js          표준 응답 → 항목/페이징 정규화 (JSON/XML)
-│  ├─ portal.js         포털 상세/검색 페이지 파서
-│  ├─ registry.js       키/엔드포인트 저장소 (원자적 저장, 손상 백업)
-│  ├─ usage.js          일일 호출량 집계 (KST)
-│  ├─ cache.js          TTL/LRU 응답 캐시
-│  ├─ export.js         CSV/JSON 내보내기 (경로 이탈·수식 주입 차단)
-│  ├─ hints.js          명세 → TypeScript 타입
-│  ├─ doctor.js         환경 점검 · --fix
-│  ├─ xml.js            소형 XML→객체 파서
 │  ├─ tools.js          호출·탐색·키 관리 도구
-│  ├─ apply.js          활용신청 자동화 (Playwright)
-│  └─ tools-apply.js    활용신청 도구
+│  ├─ datago.js         호출 · 키 인코딩 · resultCode 해석 · 백오프 재시도
+│  ├─ security.js       호스트 허용목록 · 주소 검사 · 키 가리기
+│  ├─ safefetch.js      접속하는 주소를 검사하는 HTTP 클라이언트
+│  ├─ portal.js         포털 상세/검색 페이지 파서
+│  ├─ items.js, xml.js  표준 응답 → 항목/페이징 정규화 · 소형 XML 파서
+│  ├─ registry.js       키/엔드포인트 저장소 (원자적 저장, 손상 백업)
+│  ├─ usage.js, cache.js, breaker.js   일일 호출량(KST) · TTL 캐시 · 서킷 브레이커
+│  ├─ export.js         CSV/JSON 내보내기 (경로 이탈·수식 주입 차단)
+│  ├─ apply.js, tools-apply.js, keyextract.js   활용신청 자동화 (Playwright)
+│  ├─ doctor.js, selfcheck.js, printconfig.js   환경 점검 · 설치 검증 · 클라이언트 설정 스니펫
+│  └─ ...               로깅, 리소스/프롬프트, 출력 스키마, 힌트
 ├─ skills/datagokr/     Claude Code 스킬
 └─ test/                node:test (+ 실제 페이지 fixture)
 ```
@@ -245,7 +252,9 @@ datagokr-apply-mcp/
 ## 개발
 
 ```bash
-npm test                 # 네트워크/브라우저 없이 전부 검증 (fetch 주입)
+npm ci                   # 개발 도구(typescript) + 선택 의존성 playwright-core
+npm test                 # 외부 네트워크/브라우저 없이 검증 (fetch 주입, 로컬 테스트 서버)
+npm run typecheck
 node bin/server.js doctor
 ```
 
