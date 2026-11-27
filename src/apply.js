@@ -320,9 +320,12 @@ const KEY_PAGES = [
   MYPAGE,
 ];
 
+const MANUAL_KEY_HINT = '마이페이지 > 개발계정에서 일반 인증키를 직접 복사해 save_key 로 저장하세요.';
+
 /** @returns {Promise<{ok:boolean, needLogin?:boolean, keys?:{encoding:string|null,decoding:string|null}, message:string}>} */
 export async function fetchServiceKey({ headless = true } = {}) {
-  const { extractServiceKeys } = await import('./keyextract.js');
+  const { extractServiceKeys, validateServiceKeys } = await import('./keyextract.js');
+  let lastReason = null;
   return withContext({ headless }, async (ctx) => {
     const page = await ctx.newPage();
     try {
@@ -332,9 +335,13 @@ export async function fetchServiceKey({ headless = true } = {}) {
           return { ok: false, needLogin: true, message: '로그인 세션이 없습니다. 먼저 apply_login.' };
         }
         const keys = extractServiceKeys(await page.content());
-        if (keys) return { ok: true, keys, message: '일반 인증키를 읽었습니다.' };
+        if (keys) {
+          const v = validateServiceKeys(keys);
+          if (v.ok) return { ok: true, keys, message: '일반 인증키를 읽었습니다.' };
+          lastReason = v.reason; // 틀린 토큰일 수 있으니 저장하지 않고 다음 후보 페이지를 본다
+        }
       }
-      return { ok: false, message: '마이페이지에서 일반 인증키를 찾지 못했어요. 포털 마이페이지 > 개발계정에서 직접 확인해 save_key 로 저장하세요.' };
+      return { ok: false, message: (lastReason ? `읽은 값이 인증키가 맞는지 확인하지 못해 저장하지 않았어요 (${lastReason}). ` : '마이페이지에서 일반 인증키를 찾지 못했어요. ') + MANUAL_KEY_HINT };
     } finally {
       await page.close().catch(() => {});
     }

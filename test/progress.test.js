@@ -68,8 +68,8 @@ test('apply_api 가 항목마다 진행률을 보낸다', async () => {
 
 test('apply_api: 신청 성공 뒤 인증키를 자동 저장하고 출력에는 마스킹만 남긴다', async () => {
   const saved = [];
-  const registry = { saveKey: (n, k) => { saved.push([n, k]); return { name: n, isDefault: true }; } };
-  const FAKE = 'FAKEFAKEFAKEfakeKEY%2BEXAMPLE%2FNOTAREAL';
+  const registry = { getKey: () => null, saveKey: (n, k) => { saved.push([n, k]); return { name: n, isDefault: true }; } };
+  const FAKE = encodeURIComponent('FAKEFAKEFAKEfakeKEY+EXAMPLE/NOTAREALKEY0123456789abcdefghij==');
   const apply = {
     isAvailable: () => true,
     applyForApis: async () => ({ total: 1, done: 1, already: 0, failed: 0, needLogin: false, skipped: 0, invalid: [], duplicates: [], results: [{ idOrUrl: '15000314', ok: true }] }),
@@ -82,4 +82,38 @@ test('apply_api: 신청 성공 뒤 인증키를 자동 저장하고 출력에는
   assert.equal(sc.key.saved, true);
   assert.equal(saved[0][1], FAKE);
   assert.ok(!JSON.stringify(res.result).includes('EXAMPLE'));
+});
+
+const FAKE2 = encodeURIComponent('FAKEFAKEFAKEfakeKEY+EXAMPLE/NOTAREALKEY0123456789abcdefghij==');
+const mkApply = (keys) => ({
+  isAvailable: () => true,
+  fetchServiceKey: async () => ({ ok: true, keys, message: 'x' }),
+});
+
+test('apply_get_key: 검증 실패한 키는 저장하지 않고 save_key 안내', async () => {
+  const saved = [];
+  const registry = { getKey: () => null, saveKey: (n, k) => saved.push([n, k]) };
+  const s = createServer({});
+  registerApplyTools(s, { apply: mkApply({ encoding: 'SHORTSHORTSHORTSHORTSHORT', decoding: 'SHORTSHORTSHORTSHORTSHORT' }), registry });
+  const res = await s.handle(call('apply_get_key', {}, 'v'), {});
+  assert.equal(res.result.structuredContent.saved, false);
+  assert.match(res.result.content[0].text, /save_key/);
+  assert.equal(saved.length, 0);
+});
+
+test('apply_get_key: 같은 이름에 다른 키가 있으면 덮어쓰지 않고 새 이름으로 저장, 마스킹', async () => {
+  const store = { datago: 'OLDOLDOLDOLDOLDOLDOLDOLDOLDOLDOLDOLDOLDOLDOLDOLD' };
+  const registry = { getKey: (n) => store[n] || null, saveKey: (n, k) => { store[n] = k; } };
+  const s = createServer({});
+  registerApplyTools(s, { apply: mkApply({ encoding: FAKE2, decoding: decodeURIComponent(FAKE2) }), registry });
+  const res = await s.handle(call('apply_get_key', {}, 'o'), {});
+  assert.equal(res.result.structuredContent.keyName, 'datago-2');
+  assert.equal(store.datago.startsWith('OLD'), true);
+  assert.equal(store['datago-2'], FAKE2);
+  assert.ok(!JSON.stringify(res.result).includes('EXAMPLE'));
+  assert.ok(!JSON.stringify(res.result).includes('OLDOLDOLDOLDOLD'));
+  // 같은 키를 다시 읽으면 중복 저장하지 않음
+  const again = await s.handle(call('apply_get_key', {}, 'o2'), {});
+  assert.equal(again.result.structuredContent.saved, false);
+  assert.equal(Object.keys(store).length, 2);
 });
