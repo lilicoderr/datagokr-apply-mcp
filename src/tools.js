@@ -8,6 +8,7 @@ import { extractItems, hasMore } from './items.js';
 import { fetchApiSpec, buildExampleParams, searchDatasets, findApplyTargets } from './portal.js';
 import { cacheKey } from './cache.js';
 import { writeExport } from './export.js';
+import { toTypeScript } from './hints.js';
 
 const APPLY_GUIDE = `공공데이터포털 오픈API '활용신청' 절차 (로그인 필요 — 자동화 불가):
 
@@ -235,6 +236,53 @@ export function registerTools(server, { registry, fetchImpl, usage, sleep, logge
       call_api_예시: example,
       상세페이지: spec.pageUrl,
     });
+  });
+
+  // ── api_types : 명세 → TypeScript 타입 (개발자가 코드에 바로 붙여넣기) ──
+  server.tool('api_types', {
+    description: '데이터 id(또는 상세 URL)의 명세를 읽어 요청 변수/응답 항목의 TypeScript 인터페이스를 생성한다. '
+      + '앱 코드에 이 API 를 붙일 때 describe_api 대신 쓰면 바로 복사해 쓸 타입이 나온다. 로그인 불필요.',
+    inputSchema: { type: 'object', required: ['idOrUrl'], properties: {
+      idOrUrl: { type: 'string', description: '데이터 id 또는 data.go.kr/data/<id>/... URL' },
+      name: { type: 'string', description: '타입 이름 접두사 (기본: API 제목)' },
+    } },
+  }, async (a) => {
+    const spec = await fetchApiSpec(a.idOrUrl, { fetchImpl });
+    if (!spec.found) return text(`명세를 읽지 못했어요. 직접 확인: ${spec.pageUrl}`);
+    return text(`// ${spec.title} — ${spec.endpoint || spec.pageUrl}\n${toTypeScript(spec, { name: a.name })}`);
+  });
+
+  // ── batch_call : 같은 API 를 여러 params 로 호출 (호출 간격 제한) ──
+  server.tool('batch_call', {
+    description: '같은 API 를 paramsList 의 각 params 로 차례로 호출해 항목수/성공 여부를 모아 돌려준다 '
+      + '(예: 여러 지역·월 조회). 호출 사이에 intervalMs 만큼 쉬어 트래픽 제한을 피하고, 실패하면 stopOnError 로 중단할 수 있다. '
+      + '한 번에 최대 50건.',
+    inputSchema: { type: 'object', required: ['paramsList'], properties: {
+      url: { type: 'string' }, endpoint: { type: 'string' }, keyName: { type: 'string' }, serviceKey: { type: 'string' },
+      params: { type: 'object', description: '모든 호출에 공통으로 붙는 params' },
+      paramsList: { type: 'array', description: '호출별 params 배열 (최대 50)', items: { type: 'object' } },
+      intervalMs: { type: 'number', description: '호출 간 대기(기본 200ms)' },
+      stopOnError: { type: 'boolean' },
+      maxItems: { type: 'number', description: '호출당 응답에 담을 최대 항목 (기본 5)' },
+    } },
+  }, async (args) => {
+    const list = Array.isArray(args.paramsList) ? args.paramsList.slice(0, 50) : [];
+    if (!list.length) throw new Error('paramsList 가 비어 있어요.');
+    const { url, params, serviceKey, keyName } = resolveCall(args, registry);
+    const wait = sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+    const gap = Math.max(0, args.intervalMs ?? 200);
+    const results = [];
+    for (let i = 0; i < list.length; i++) {
+      if (i > 0 && gap) await wait(gap);
+      const r = await callApi({ url, params: { ...params, ...list[i] }, serviceKey, fetchImpl, sleep, logger });
+      usage?.record(keyName, { ok: r.ok });
+      const ex = extractItems(r.data);
+      results.push({ params: list[i], ok: r.ok, resultCode: r.resultCode ?? null, totalCount: ex.totalCount,
+        항목수: ex.items.length, 항목: ex.items.slice(0, args.maxItems ?? 5), ...(r.ok ? {} : { 도움말: r.hint }) });
+      if (!r.ok && args.stopOnError) break;
+    }
+    const okCount = results.filter((x) => x.ok).length;
+    return pretty({ 요청: list.length, 실행: results.length, 성공: okCount, 실패: results.length - okCount, 결과: results });
   });
 
   server.tool('quota_status', {
