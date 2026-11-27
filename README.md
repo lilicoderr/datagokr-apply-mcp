@@ -119,8 +119,8 @@ Copy [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) to `~/.claude/skills
 |---|---|
 | `search_datasets` | Keyword search for open APIs (title, category, provider, summary, application count) |
 | `find_apply_targets` | Keeps only **auto-approved REST** APIs and returns their ids (public pages, no browser) |
-| `describe_api` | Data id → **request URL, required/optional params, response fields, traffic limit** |
-| `call_api` | Calls an API (GET): auto key, double-encoding fix, JSON/XML parsing, retries, `itemsOnly`, `cacheSeconds` (TTL cache to save quota) |
+| `describe_api` | Data id → **request URL, required/optional params, response fields, traffic limit**. Pass `operation` (id or name part) to read another function of a multi-operation API |
+| `call_api` | Calls an API (GET): auto key, double-encoding fix, JSON/XML parsing, retries, `itemsOnly`, `cacheSeconds` (TTL cache to save quota). After `describe_api` it **refuses to spend quota when a required param is missing** (`skipValidation:true` overrides) and warns on unknown param names |
 | `fetch_all` | Walks every page and returns the merged items (`maxPages` cap) |
 | `export_data` | Saves the full result as **CSV (Excel-safe BOM) or JSON** and returns only the path — keeps big datasets out of the model's context |
 | `quota_status` | Today's (KST) per-key call count and estimated remaining quota |
@@ -159,10 +159,13 @@ node bin/server.js doctor --fix             # should be all green
 
 The flow Claude follows (each tool's description says what to do next):
 
+0. `search_datasets` / `find_apply_targets` — pick an API; `describe_api` — read its spec (needs no login).
 1. `apply_status` — am I logged in?
 2. If not, `apply_login` — **opens a window and returns immediately**. You only **log in by hand**. The session is saved every few seconds and the window closes once `apply_status` confirms it (usually a one-time step).
 3. `find_apply_targets` → `apply_api` — submit one or many applications. On success the **general auth key is read from My page and saved automatically** (never printed in full). If that step fails, run `apply_get_key`.
-4. `call_api` — the saved key is attached for you. Use `my_applications` to check approval.
+4. `call_api` — the saved key is attached for you. Right after approval it can take 1-2 h to activate (`resultCode` 20/30); `my_applications` shows the approval state.
+
+Every `apply_*` result carries a Korean `message`, an English `hint` and a `next` field naming the next tool to call. Errors from any tool follow the same convention (`error` + `hint`).
 
 > **Not verified against the live portal yet.** Automatic key retrieval depends on the portal's My page markup and the portal URLs it tries were never checked against a real logged-in page. The extractor is only unit-tested on fixtures with fake keys. A value is saved only if it passes validation (Encoding decodes to Decoding, 40–200 chars, sane charset); otherwise nothing is saved. A different key already saved under the same name is never overwritten (the new one goes to `<name>-2`). **Fallback:** copy the general auth key from My page > Development account on data.go.kr and run `save_key`.
 

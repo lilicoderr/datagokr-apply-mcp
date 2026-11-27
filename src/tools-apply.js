@@ -12,8 +12,12 @@ import { annotateTools } from './annotations.js';
 import { maskSecret, validateServiceKeys } from './keyextract.js';
 
 function text(t) { return { content: [{ type: 'text', text: t }] }; }
-function fail(message) {
-  return { content: [{ type: 'text', text: message }], structuredContent: { ok: false, message }, isError: true };
+// 모든 apply_* 결과는 한국어 message + 영어 hint(+ 다음 도구 next) 를 가진다
+function fail(message, hint = 'Invalid input; see message.') {
+  return { content: [{ type: 'text', text: message }], structuredContent: { ok: false, message, hint }, isError: true };
+}
+function reply(out) {
+  return { content: [{ type: 'text', text: out.message + (out.next ? `\n다음 단계: ${out.next}` : '') }], structuredContent: out };
 }
 
 // 같은 이름에 다른 키가 이미 있으면 덮어쓰지 않고 name-2, name-3 … 로 저장할 자리를 고른다.
@@ -28,6 +32,14 @@ function pickKeySlot(registry, name, keys) {
   return { name: `${name}-${Date.now()}`, same: false };
 }
 
+// apply_api 결과에서 "지금 모델이 할 다음 일"과 영어 hint 를 정한다
+function nextStep(r, key) {
+  if (r.needLogin) return { next: 'apply_login → (사용자 로그인) → apply_status → apply_api 재시도', hint: 'Not logged in; run apply_login, then retry apply_api.' };
+  if (key?.saved || key?.ok) return { next: 'call_api 로 호출 (describe_api 로 필수 변수 확인). 승인 직후엔 1~2시간 걸릴 수 있음(resultCode 30/20 이면 my_applications 확인)', hint: 'Key saved; call_api next. Right after approval it may take 1-2h to activate.' };
+  if (r.done || r.already) return { next: 'apply_get_key 로 키를 가져오거나, 마이페이지에서 복사해 save_key', hint: 'Applied but key not saved; run apply_get_key or save_key manually.' };
+  return { next: 'message 의 실패 사유를 보고 대상을 바꾸거나(find_apply_targets) 포털 페이지에서 직접 신청', hint: 'All applications failed; see results[].message (LINK type or corporate-only APIs cannot be auto-applied).' };
+}
+
 /**
  * @param {any} server
  * @param {import('./types.js').Options} [options]
@@ -40,27 +52,33 @@ export function registerApplyTools(server, { apply: applyImpl, registry } = {}) 
     const name = keyName || 'datago';
     try {
       const r = await apply.fetchServiceKey({ headless });
-      if (!r.ok) return { ok: false, saved: false, needLogin: Boolean(r.needLogin), message: r.message };
+      if (!r.ok) {
+        return { ok: false, saved: false, needLogin: Boolean(r.needLogin), message: `${r.message} 자동으로 못 읽으면 마이페이지 > 오픈API > 개발계정에서 일반 인증키를 복사해 save_key 로 저장하세요.`,
+          hint: r.needLogin ? 'Not logged in; run apply_login then apply_status.' : 'Automatic key retrieval failed (unverified against the live portal); copy the key manually and use save_key.',
+          next: r.needLogin ? 'apply_login' : 'save_key { name, key }' };
+      }
       const v = validateServiceKeys(r.keys);
       if (!v.ok) {
-        return { ok: false, saved: false, message: `읽은 값이 인증키가 맞는지 확인하지 못해 저장하지 않았어요 (${v.reason}). 마이페이지 > 개발계정에서 일반 인증키를 직접 복사해 save_key 로 저장하세요.` };
+        return { ok: false, saved: false, message: `읽은 값이 인증키가 맞는지 확인하지 못해 저장하지 않았어요 (${v.reason}). 마이페이지 > 개발계정에서 일반 인증키를 직접 복사해 save_key 로 저장하세요.`,
+          hint: 'Scraped value did not validate as a service key; not saved. Use save_key manually.', next: 'save_key { name, key }' };
       }
       const raw = r.keys.encoding;
       const masked = maskSecret(raw);
       if (!registry) {
-        return { ok: true, saved: false, masked, message: `인증키를 읽었지만 저장소가 없어 저장하지 못했어요 (${masked}).` };
+        return { ok: true, saved: false, masked, message: `인증키를 읽었지만 저장소가 없어 저장하지 못했어요 (${masked}).`, hint: 'No registry configured; key not persisted.' };
       }
       const slot = pickKeySlot(registry, name, r.keys);
       if (slot.same) {
-        return { ok: true, saved: false, keyName: slot.name, masked, message: `같은 키가 '${slot.name}' 이름으로 이미 저장돼 있어요 (${masked}).` };
+        return { ok: true, saved: false, keyName: slot.name, masked, message: `같은 키가 '${slot.name}' 이름으로 이미 저장돼 있어요 (${masked}).`, hint: 'Key already stored; nothing to do.', next: 'call_api' };
       }
       registry.saveKey(slot.name, raw, '활용신청 자동 발급(마이페이지 일반 인증키)');
       const moved = slot.name !== name
         ? ` 기존 '${name}' 키(${maskSecret(registry.getKey(name))})는 값이 달라 덮어쓰지 않았어요.` : '';
       return { ok: true, saved: true, keyName: slot.name, masked,
-        message: `인증키를 읽어 '${slot.name}' 이름으로 저장했어요 (${masked}).${moved} 이제 call_api 로 호출할 수 있어요.` };
+        message: `인증키를 읽어 '${slot.name}' 이름으로 저장했어요 (${masked}).${moved} 이제 call_api 로 호출할 수 있어요.`, hint: 'Key saved.', next: 'call_api { url, params }' };
     } catch (e) {
-      return { ok: false, saved: false, message: `인증키 읽기 실패: ${String(e?.message || e).split(String.fromCharCode(10))[0]}` };
+      return { ok: false, saved: false, message: `인증키 읽기 실패: ${String(e?.message || e).split(String.fromCharCode(10))[0]}. 마이페이지에서 키를 복사해 save_key 로 저장할 수도 있어요.`,
+        hint: 'Key retrieval threw; run doctor, or copy the key manually and use save_key.', next: 'doctor' };
     }
   }
 
@@ -82,21 +100,26 @@ export function registerApplyTools(server, { apply: applyImpl, registry } = {}) 
     description: '[활용신청 1단계] data.go.kr 로그인 창을 연다. 호출하면 브라우저 창이 뜨고 바로 반환된다'
       + '(로그인 완료를 기다리지 않음). 사용자가 그 창에서 직접 로그인하면 세션이 자동 저장된다. '
       + '비밀번호는 저장되지 않는다. 호출 뒤 사용자에게 "창에서 로그인해 달라"고 안내하고, '
-      + '잠시 뒤 apply_status 로 로그인 완료를 확인하라. 로그인은 보통 한 번만 하면 된다.',
+      + '사용자가 로그인했다고 하면 apply_status 로 확인하라(그 다음은 apply_api). 로그인은 보통 한 번만 하면 된다.',
     inputSchema: { type: 'object', properties: { timeoutMin: { type: 'number', description: '창을 열어둘 시간(분, 기본 20)' } } },
   }, async (a) => {
     const r = await apply.startLogin({ timeoutMin: a.timeoutMin || 20 });
-    return text(`🪟 ${r.message}`);
+    return reply({ ok: true, message: r.message,
+      next: '사용자에게 "열린 창에서 로그인해 주세요"라고 안내 → 로그인했다고 하면 apply_status',
+      hint: 'Login window opened; ask the user to log in there, then call apply_status.' });
   });
 
   server.tool('apply_status', {
     description: '[활용신청 확인] data.go.kr 로그인 세션이 유효한지 확인한다. apply_api 전에 먼저 호출해 '
-      + '로그인 여부를 확인하라. 로그인이 확인되면 열려 있던 로그인 창은 자동으로 닫힌다.',
+      + '로그인 여부를 확인하라. 로그인됨 → 다음은 apply_api(대상은 find_apply_targets/describe_api 로 고름). '
+      + '안 됨 → apply_login. 로그인이 확인되면 열려 있던 로그인 창은 자동으로 닫힌다.',
   }, async () => {
     const r = await apply.checkLogin();
-    return text(r.loggedIn
-      ? '✅ 로그인됨 — 이제 apply_api 로 활용신청할 수 있어요.'
-      : '❌ 로그인 안 됨 — apply_login 을 호출해 창을 띄우고, 사용자가 로그인한 뒤 다시 확인하세요.');
+    return reply(r.loggedIn
+      ? { ok: true, loggedIn: true, message: '로그인되어 있어요.', next: 'find_apply_targets 또는 describe_api 로 대상을 고른 뒤 apply_api',
+        hint: 'Logged in; proceed to apply_api.' }
+      : { ok: false, loggedIn: false, message: '로그인이 안 되어 있어요.', next: 'apply_login 을 호출하고, 사용자가 창에서 로그인하면 apply_status 로 다시 확인',
+        hint: 'Not logged in; call apply_login, have the user log in, then re-check with apply_status.' });
   });
 
   server.tool('apply_api', {
@@ -105,7 +128,8 @@ export function registerApplyTools(server, { apply: applyImpl, registry } = {}) 
       + '단일은 idOrUrl, 여러 개는 ids 배열(한 번에 최대 50건)로 호출한다 — 한 번의 호출로 끝낸다. '
       + '로그인 세션 필요(apply_status). 개인회원 자동승인 API 는 즉시 승인된다. '
       + '예: apply_api({ idOrUrl: "15000314" }) 또는 apply_api({ ids: ["15000314","15057552"] }). '
-      + 'LINK형 API 나 기업회원 전용은 자동신청이 안 되며 그 경우 알려준다.',
+      + 'LINK형 API 나 기업회원 전용은 자동신청이 안 되며 그 경우 알려준다. '
+      + '결과의 next 필드가 다음 단계(키 저장됨 → call_api, 키 못 읽음 → apply_get_key 또는 save_key, 로그인 필요 → apply_login)를 알려준다.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -119,7 +143,7 @@ export function registerApplyTools(server, { apply: applyImpl, registry } = {}) 
     },
   }, async (a, ctx) => {
     const list = Array.isArray(a.ids) && a.ids.length ? a.ids : (a.idOrUrl ? [a.idOrUrl] : []);
-    if (!list.length) return fail('idOrUrl 또는 ids 가 필요합니다.');
+    if (!list.length) return fail('idOrUrl(단일) 또는 ids(여러 개) 가 필요해요. 대상은 find_apply_targets / search_datasets 로 먼저 고르세요.', 'idOrUrl or ids is required; pick targets with find_apply_targets.');
     const headless = !a.showBrowser;
     const r = await apply.applyForApis(list, {
       purpose: a.purpose, headless, signal: ctx?.signal,
@@ -145,14 +169,16 @@ export function registerApplyTools(server, { apply: applyImpl, registry } = {}) 
       ok: r.done > 0 || r.already > 0, total: r.total, done: r.done, already: r.already, failed: r.failed,
       needLogin: r.needLogin, results, key,
       message: lines.join('\n'),
+      ...nextStep(r, key),
     };
-    return { content: [{ type: 'text', text: out.message }], structuredContent: out };
+    return reply(out);
   });
 
   server.tool('apply_get_key', {
     description: '[활용신청 3단계] 로그인 세션으로 마이페이지 > 개발계정의 일반 인증키(Encoding/Decoding)를 읽어 '
       + '레지스트리에 저장한다(save_key 와 동일). 키 원문은 출력하지 않고 마스킹해 보여준다. '
-      + 'apply_api 가 자동으로 호출하지만, 실패했거나 나중에 다시 받을 때 직접 쓴다.',
+      + 'apply_api 가 자동으로 호출하지만, 실패했거나 나중에 다시 받을 때 직접 쓴다. 성공하면 다음은 call_api. '
+      + '(자동 읽기는 실제 포털에서 아직 검증되지 않았다 — 실패하면 마이페이지에서 키를 복사해 save_key)',
     inputSchema: { type: 'object', properties: {
       keyName: { type: 'string', description: '저장할 키 이름 (기본 "datago")' },
       showBrowser: { type: 'boolean' },
@@ -164,16 +190,28 @@ export function registerApplyTools(server, { apply: applyImpl, registry } = {}) 
 
   server.tool('my_applications', {
     description: '[활용신청 확인] 마이페이지의 활용신청/발급 현황을 가져온다(승인 여부 포함). '
-      + 'apply_api 후 결과 확인이나, 어떤 API 를 이미 신청했는지 볼 때 사용. 로그인 세션 필요.',
+      + 'apply_api 후 승인 여부를 확인하거나(승인 전이면 call_api 가 resultCode 20/30), 이미 신청한 API 를 볼 때 사용. '
+      + '승인됐는데 키가 없으면 apply_get_key. 로그인 세션 필요(없으면 apply_login).',
   }, async () => {
     const r = await apply.listMyApplications({});
-    if (r.needLogin) return text('❌ 로그인 안 됨 — apply_login 먼저.');
+    if (r.needLogin) {
+      return reply({ ok: false, needLogin: true, message: '로그인이 안 되어 있어요.', next: 'apply_login 후 apply_status',
+        hint: 'Not logged in; run apply_login first.' });
+    }
     const head = r.total != null ? `활용신청 현황 ${r.total}건` : `목록 ${r.count}건`;
-    if (!r.items?.length) return text(`${head}\n(목록 항목을 파싱하지 못했어요. 포털 마이페이지에서 확인하세요.)`);
+    if (!r.items?.length) {
+      return reply({ ok: false, total: r.total ?? null, message: `${head} — 목록 항목을 파싱하지 못했어요. 포털 마이페이지에서 직접 확인하세요.`,
+        hint: 'Application list could not be parsed (layout unverified); check the portal My Page manually.' });
+    }
     const counts = Object.entries(r.byStatus || {}).map(([k, v]) => `${k} ${v}`).join(' · ');
-    const hint = r.byStatus?.['승인']
-      ? '\n→ 인증키가 아직 저장되지 않았다면 apply_get_key 를 호출하세요.' : '';
-    return text(`${head}${counts ? ` (${counts})` : ''}\n` + r.parsed.map((x, i) => `${i + 1}. [${x.status}] ${x.name}`).join('\n') + hint);
+    const approved = Boolean(r.byStatus?.['승인']);
+    const items = r.parsed.map((x) => ({ name: x.name, status: x.status }));
+    return reply({
+      ok: true, total: r.total ?? r.count, byStatus: r.byStatus || {}, items,
+      message: `${head}${counts ? ` (${counts})` : ''}\n` + items.map((x, i) => `${i + 1}. [${x.status}] ${x.name}`).join('\n'),
+      next: approved ? '승인된 건이 있고 키가 아직 없다면 apply_get_key, 있으면 call_api' : '승인 대기 중이면 잠시 후 my_applications 를 다시 확인',
+      hint: approved ? 'Approved items exist; fetch the key with apply_get_key if not stored yet.' : 'Nothing approved yet; re-check later.',
+    });
   });
   annotateTools(server);
 }
