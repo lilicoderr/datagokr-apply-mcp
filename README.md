@@ -80,6 +80,13 @@ node bin/server.js doctor          # environment check (no install needed)
 node bin/server.js doctor --fix    # also repairs what it safely can
 ```
 
+### Any client: `--print-config`
+
+```bash
+node bin/server.js --print-config            # snippets for Claude Desktop, Claude Code and Cursor
+node bin/server.js --print-config cursor     # just one (paths are filled in; no secrets are printed)
+```
+
 ### Claude Code
 
 ```bash

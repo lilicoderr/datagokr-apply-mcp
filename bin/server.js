@@ -8,12 +8,14 @@ import { createRegistry } from '../src/registry.js';
 import { registerTools } from '../src/tools.js';
 import { createUsage } from '../src/usage.js';
 import { createCache } from '../src/cache.js';
+import { formatPrintConfig } from '../src/printconfig.js';
 import { registerResources } from '../src/resources.js';
 import { registerApplyTools } from '../src/tools-apply.js';
 import * as apply from '../src/apply.js';
 import { runDoctor, formatReport, exitCode, applyFixes, formatFixes } from '../src/doctor.js';
 import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const arg = process.argv[2];
@@ -24,6 +26,8 @@ const HELP = `datagokr-apply-mcp v${pkg.version}
   datagokr-apply-mcp           MCP 서버 시작 (stdio) — 보통 Claude 가 실행
   datagokr-apply-mcp doctor    설치/키/네트워크/브라우저/세션 점검
   datagokr-apply-mcp doctor --fix   고칠 수 있는 것(설정 파일·권한·Chromium)은 자동 수정
+  datagokr-apply-mcp --print-config [claude-desktop|claude-code|cursor|all]
+                               클라이언트별 설치 스니펫 출력
   datagokr-apply-mcp --version
 
 환경 변수:
@@ -39,6 +43,14 @@ if (arg === '--version' || arg === '-v') {
 if (arg === '--help' || arg === '-h') {
   console.log(HELP);
   process.exit(0);
+}
+
+if (arg === '--print-config') {
+  try {
+    const script = fileURLToPath(new URL('./server.js', import.meta.url));
+    console.log(formatPrintConfig(process.argv[3], { script }));
+    process.exit(0);
+  } catch (e) { console.error(e.message); process.exit(2); }
 }
 
 const registry = createRegistry();
