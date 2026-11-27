@@ -310,3 +310,33 @@ export function toOpenApiUrl(idOrUrl) {
   if (m) return `${BASE}/data/${m[1]}/openapi.do`;
   return null;
 }
+
+// 마이페이지 > 개발계정에서 일반 인증키(Encoding/Decoding)를 읽는다. 기존 로그인 세션 재사용.
+// 반환값의 keys 는 호출한 쪽(도구)이 레지스트리에 저장하고, 어떤 출력에도 원문을 싣지 않는다.
+// ※ 라이브 포털 마크업 기준으로 검증되지 않았다 — 여러 후보 페이지를 순서대로 시도한다.
+const KEY_PAGES = [
+  `${BASE}/iim/api/selectAPIAcountView.do`,
+  `${BASE}/iim/api/selectAcountList.do`,
+  MYPAGE,
+];
+
+/** @returns {Promise<{ok:boolean, needLogin?:boolean, keys?:{encoding:string|null,decoding:string|null}, message:string}>} */
+export async function fetchServiceKey({ headless = true } = {}) {
+  const { extractServiceKeys } = await import('./keyextract.js');
+  return withContext({ headless }, async (ctx) => {
+    const page = await ctx.newPage();
+    try {
+      for (const url of KEY_PAGES) {
+        await page.goto(url, { waitUntil: 'networkidle', timeout: 40000 }).catch(() => {});
+        if (/login|loginView/i.test(page.url())) {
+          return { ok: false, needLogin: true, message: '로그인 세션이 없습니다. 먼저 apply_login.' };
+        }
+        const keys = extractServiceKeys(await page.content());
+        if (keys) return { ok: true, keys, message: '일반 인증키를 읽었습니다.' };
+      }
+      return { ok: false, message: '마이페이지에서 일반 인증키를 찾지 못했어요. 포털 마이페이지 > 개발계정에서 직접 확인해 save_key 로 저장하세요.' };
+    } finally {
+      await page.close().catch(() => {});
+    }
+  });
+}
