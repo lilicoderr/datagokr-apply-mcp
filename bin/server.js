@@ -29,6 +29,7 @@ const HELP = `datagokr-apply-mcp v${pkg.version}
   datagokr-apply-mcp           MCP 서버 시작 (stdio) — 보통 Claude 가 실행
   datagokr-apply-mcp doctor    설치/키/네트워크/브라우저/세션 점검
   datagokr-apply-mcp doctor --fix   고칠 수 있는 것(설정 파일·권한·Chromium)은 자동 수정
+  datagokr-apply-mcp use <id|URL>   원클릭: 명세 → 신청 → 키 → 시험 호출 → 예시 (--dry-run, 신청 제출은 --confirm)
   datagokr-apply-mcp --print-config [claude-desktop|claude-code|cursor|all]
                                클라이언트별 설치 스니펫 출력
   datagokr-apply-mcp --version
@@ -77,6 +78,15 @@ if (arg === 'doctor') {
     console.log(formatReport(results));
   }
   process.exit(exitCode(results));
+}
+
+if (arg === 'use') {
+  const { runUseCli } = await import('../src/cli-use.js');
+  const ac = new AbortController();
+  process.once('SIGINT', () => ac.abort(new Error('취소됨')));
+  const logger = loggerFromEnv(process.env, { secrets: () => Object.keys(registry.listKeys().keys).map((n) => registry.getKey(n)) });
+  try { process.exit(await runUseCli(process.argv.slice(3), { registry, usage, apply, logger }, { signal: ac.signal })); }
+  catch (e) { console.error(ac.signal.aborted ? '취소했어요. 같은 명령을 다시 실행하면 이어서 진행해요.' : `오류: ${e.message}`); process.exit(1); }
 }
 
 const server = createServer({ name: 'datagokr-mcp', version: pkg.version });

@@ -43,7 +43,7 @@ jobs:
         env:
           DATAGO_REQUIRE_BROWSER: '1'
         run: |
-          node --test --test-reporter=tap test/apply-e2e.test.js | tee browser.tap
+          node --test --test-reporter=tap test/apply-e2e.test.js test/use-e2e.test.js | tee browser.tap
           grep -qx '# skipped 0' browser.tap || { echo '::error::browser tests were skipped'; exit 1; }
 
   coverage:
