@@ -1,5 +1,6 @@
 // 실제 Playwright(헤드리스 Chromium)로 신청 흐름을 끝까지 돌린다. 상대는 test/helpers/fake-portal.js 의
 // 가짜 포털이며 실제 data.go.kr 이 아니다. Chromium 이 없으면 건너뛴다.
+// 단, DATAGO_REQUIRE_BROWSER=1 (CI 의 browser 잡) 이면 건너뛰지 않고 실패한다.
 import test, { before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -19,6 +20,7 @@ delete process.env.DATAGO_STATE;
 const apply = await import('../src/apply.js');
 const { registerApplyTools } = await import('../src/tools-apply.js');
 const skip = apply.browserInstalled() ? false : 'Chromium 미설치';
+if (skip && process.env.DATAGO_REQUIRE_BROWSER === '1') throw new Error(`DATAGO_REQUIRE_BROWSER=1 인데 브라우저 테스트를 실행할 수 없어요: ${skip}`);
 
 before(() => {
   fs.writeFileSync(path.join(home, 'storage-state.json'), JSON.stringify({

@@ -258,6 +258,8 @@ npm run typecheck
 node bin/server.js doctor
 ```
 
+신청 흐름 브라우저 테스트(`test/apply-e2e.test.js`)는 헤드리스 Chromium 으로 **로컬 가짜 포털**을 상대하며, Chromium 이 없으면 건너뜁니다. CI 는 Ubuntu 전용 `browser` 잡에서 실행하고, 거기서는 건너뛰면 실패합니다. 통과해도 실제 data.go.kr 동작은 이 테스트로 **검증되지 않습니다.**
+
 기여 방법은 [CONTRIBUTING.md](CONTRIBUTING.md), 변경 내역은 [CHANGELOG.md](CHANGELOG.md) 를 보세요.
 
 ## 라이선스

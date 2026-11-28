@@ -277,6 +277,8 @@ node --test --experimental-test-coverage
 node bin/server.js doctor
 ```
 
+The apply-flow browser tests (`test/apply-e2e.test.js`) drive headless Chromium against a **local fake portal**; they are skipped when Chromium is not installed. CI runs them in a dedicated Ubuntu `browser` job, where skipping is a failure. Passing there says nothing about the real data.go.kr, which remains **unverified** by these tests.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## License
