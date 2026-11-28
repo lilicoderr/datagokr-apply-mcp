@@ -13,7 +13,7 @@
 
 **English** · [한국어](README.ko.md)
 
-[Quick start](#quick-start) · [Tools](#tools-21) · [Recipes](docs/recipes.md) · [Error catalog](docs/error-catalog.md) · [Auto-apply](#auto-apply-for-api-keys) · [Security](#security) · [FAQ](#faq) · [Contributing](CONTRIBUTING.md)
+[Quick start](#quick-start) · [Tools](#tools-22) · [Recipes](docs/recipes.md) · [Error catalog](docs/error-catalog.md) · [Auto-apply](#auto-apply-for-api-keys) · [Security](#security) · [FAQ](#faq) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -124,9 +124,9 @@ Add the same entry under `mcpServers` in `claude_desktop_config.json`.
 
 Copy [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) to `~/.claude/skills/datagokr/`. Claude will then follow **search → read spec → apply → call** whenever you ask for a public-data API.
 
-## Tools (21)
+## Tools (22)
 
-Without `playwright-core` the server lists 17: the five auto-apply tools are replaced by `apply_setup`, which explains how to enable them.
+Without `playwright-core` the server lists 18: the five auto-apply tools are replaced by `apply_setup`, which explains how to enable them (`use_api` stays and reports `needs_setup`).
 
 **Explore and call** — no login needed
 
@@ -140,6 +140,12 @@ Without `playwright-core` the server lists 17: the five auto-apply tools are rep
 | `export_data` | Saves the full result as **CSV (Excel-safe BOM) or JSON** and returns only the path — keeps big datasets out of the model's context |
 | `quota_status` | Today's (KST) per-key call count and estimated remaining quota |
 | `explain_error` | `resultCode` → plain explanation (no code → the full table) |
+
+**One click** — the whole core flow in one call
+
+| Tool | What it does |
+|---|---|
+| `use_api` | `idOrUrl` → reads the spec → (if no stored key works) applies → saves the key (never overwrites) → test call with the spec's sample params → saves an endpoint alias → returns a ready-to-run example (`call_api` args, `curl`, a JS snippet; the key is only the `DATAGO_SERVICE_KEY` placeholder). **Submitting an application changes your portal account, so it only happens with `confirm:true`**; `dryRun:true` shows the plan without doing anything. Re-running continues where it stopped; progress and cancellation are supported. CLI: `datagokr-apply-mcp use <id\|url>` |
 
 **Keys and aliases**
 
@@ -189,6 +195,19 @@ The flow Claude follows (each tool's description says what to do next):
 > Auto-apply works for **individual accounts and REST-type, auto-approved APIs**. LINK-type (external) and corporate-only APIs report "could not open the application form". Verified by applying for and getting 11 individual auto-approval APIs approved.
 
 You can also get a key by hand: log in → **활용신청** on the API page → My page › Development account › **General auth key** → `save_key`.
+
+### One click: `use_api`
+
+```text
+use_api { idOrUrl: "15012690", dryRun: true }       # what would happen (nothing changes)
+use_api { idOrUrl: "15012690" }                      # no key? -> status needs_confirm + the plan to show you
+use_api { idOrUrl: "15012690", confirm: true }       # submits the application, saves the key, test-calls, saves the alias
+use_api { idOrUrl: "15012690" }                      # run again later: resumes, never re-applies
+```
+
+`status` tells the next step: `ready` · `needs_confirm` · `needs_login` (run `apply_login`) · `pending_activation` (the portal still rejects the key with code 20/30 — approval can take 1-2 h; `retryAfter` says when to re-run) · `need_params` · `needs_key` · `call_failed` · `apply_failed` · `unsupported` · `blocked_host` · `needs_setup`. Existing keys and aliases are never overwritten (`datago-2`, `api-<id>-2`). The flow record in the config file holds only the data id, timestamps and a key *name*. From a terminal: `node bin/server.js use 15012690 --dry-run`, then `--confirm` (`--param k=v`, `--json`; exit code 0 = ready, 2 = needs you, 1 = error).
+
+> **Not verified against the live portal.** `use_api` is tested end to end against a local fake portal (headless Chromium in CI) and with mocks. The portal's real application form, key page and approval timing are unverified, so the first real run may need `showBrowser:true` or a manual `save_key`.
 
 ## Configuration
 

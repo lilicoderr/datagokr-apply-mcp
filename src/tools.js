@@ -21,6 +21,8 @@ export const APPLY_GUIDE = `공공데이터포털 오픈API 활용신청 → 키
 4. 승인 뒤 일반 인증키(Encoding/Decoding)를 마이페이지에서 자동으로 읽어 save_key 로 저장한다(apply_get_key 로 다시 시도 가능).
 5. call_api 로 호출한다. 키는 자동으로 붙고 Encoding/Decoding 어느 쪽이든 인코딩이 보정된다.
 
+한 번에: use_api { idOrUrl } 가 2~5 단계를 이어서 한다(신청 제출은 사용자 동의 후 confirm:true, dryRun 으로 미리보기, 다시 실행하면 이어서 진행).
+
 수동으로 할 때: data.go.kr 로그인 → API 상세 페이지 [활용신청] → 마이페이지 > 오픈API > 개발계정에서 인증키 확인 → save_key.
 트래픽 제한(개발계정 보통 일 1,000회)을 넘기면 resultCode 22 가 난다. 막히면 doctor 를 실행하라.`;
 

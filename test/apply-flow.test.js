@@ -79,7 +79,7 @@ test('SKILL.md 와 README 가 언급한 도구는 모두 실제 server.tools 에
     const text = fs.readFileSync(new URL(f, import.meta.url), 'utf8');
     const used = new Set([...text.matchAll(/\b((?:apply|my|find|describe|search|call|fetch|export|save|list|remove|set|explain|quota)_[a-z_]+)\b/g)].map((m) => m[1]));
     for (const u of used) {
-      if (['apply_setup'].includes(u) || names.has(u)) continue;
+      if (['apply_setup', 'call_failed', 'apply_failed'].includes(u) || names.has(u)) continue; // 뒤의 둘은 use_api 의 status 값
       assert.fail(`${f} 가 존재하지 않는 도구를 언급: ${u}`);
     }
   }

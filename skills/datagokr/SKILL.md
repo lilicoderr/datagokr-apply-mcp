@@ -24,6 +24,14 @@ datagokr MCP 도구를 아래 순서로 쓴다. 추측으로 호출하지 말고
 - `found:false` 와 `reason` 이 나오면 REST 가 아니거나(LINK/파일데이터) 명세를 못 읽은 것이다 — `pageUrl` 을 사용자에게 안내한다.
 - 명세를 본 뒤 `call_api` 에 필수 변수를 빠뜨리면 호출하지 않고 `summary.missing` 을 돌려준다(트래픽 절약). 일부러 보내려면 `skipValidation: true`.
 
+## 2.5. 가장 빠른 길: `use_api` (원클릭)
+
+대상 id 를 정했다면 `use_api { idOrUrl }` 한 번으로 명세 → (필요하면) 신청 → 키 저장 → 시험 호출 → 별칭 저장 → 실행 예시(curl/JS, 키는 `DATAGO_SERVICE_KEY` 자리표시자)까지 간다.
+
+- 활용신청은 사용자의 포털 계정을 바꾼다. **먼저 `confirm` 없이(또는 `dryRun:true`) 부르고**, `status: needs_confirm` 의 `plan`(대상·활용목적·승인 방식)을 사용자에게 보여 **동의를 받은 뒤에만** `confirm:true` 로 다시 부른다. 사용자 동의 없이 `confirm:true` 를 넣지 않는다.
+- `status` 별 행동: `needs_login` → `apply_login` 안내 후 `apply_status`, 다시 `use_api` · `pending_activation` → 신청 직후 승인 반영 지연이니 `retryAfter` 이후 같은 인자로 재실행(재신청 안 함) · `need_params` → `params` 로 값을 주고 재실행 · `needs_key` → 사용자가 마이페이지 키를 `save_key` 후 재실행 · `ready` → `example.call_api` 로 호출.
+- 다시 실행하면 이어서 진행한다. 키·별칭은 덮어쓰지 않는다. 실제 포털에서는 아직 검증되지 않았으니, 실패하면 아래 3번의 개별 도구로 한 단계씩 확인한다.
+
 ## 3. 키 확보 (활용신청 → 키 자동 저장)
 
 - `list_keys` 로 저장된 키가 있는지 본다. 있으면 4번으로.
@@ -60,6 +68,6 @@ datagokr MCP 도구를 아래 순서로 쓴다. 추측으로 호출하지 말고
 ## 하지 말 것
 
 - 사용자의 포털 비밀번호를 묻거나 저장하지 않는다. 로그인은 사용자가 창에서 직접 한다.
-- 키 원문을 응답/로그에 옮겨 적지 않는다 (`list_keys`, `apply_api`, `apply_get_key` 는 마스킹된 값만 돌려준다).
+- 키 원문을 응답/로그에 옮겨 적지 않는다 (`list_keys`, `apply_api`, `apply_get_key`, `use_api` 는 마스킹된 값만 돌려준다).
 - 일괄 신청은 사용자가 요청한 범위로만 한다.
 

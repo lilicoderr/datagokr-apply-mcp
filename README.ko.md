@@ -12,7 +12,7 @@
 
 [English](README.md) · **한국어**
 
-[빠른 시작](#빠른-시작) · [도구 목록](#도구-21개) · [활용신청 자동화](#활용신청-자동화) · [보안](#보안) · [FAQ](#faq) · [기여하기](CONTRIBUTING.md)
+[빠른 시작](#빠른-시작) · [도구 목록](#도구-22개) · [활용신청 자동화](#활용신청-자동화) · [보안](#보안) · [FAQ](#faq) · [기여하기](CONTRIBUTING.md)
 
 </div>
 
@@ -110,9 +110,9 @@ claude mcp add datagokr -- node /절대경로/datagokr-apply-mcp/bin/server.js
 
 [`skills/datagokr/SKILL.md`](skills/datagokr/SKILL.md) 를 `~/.claude/skills/datagokr/` 에 복사하면, "공공데이터 API 써줘" 같은 요청에서 Claude 가 **검색 → 명세 확인 → 신청 → 호출** 순서를 따릅니다.
 
-## 도구 (21개)
+## 도구 (22개)
 
-`playwright-core` 가 없으면 17개가 보여요: 활용신청 도구 5개 대신 켜는 방법을 알려주는 `apply_setup` 이 나옵니다.
+`playwright-core` 가 없으면 18개가 보여요: 활용신청 도구 5개 대신 켜는 방법을 알려주는 `apply_setup` 이 나옵니다(`use_api` 는 남아 `needs_setup` 으로 안내).
 
 **호출 · 탐색** — 로그인 불필요
 
@@ -126,6 +126,12 @@ claude mcp add datagokr -- node /절대경로/datagokr-apply-mcp/bin/server.js
 | `export_data` | 전체 결과를 **CSV(엑셀용 BOM)/JSON 파일**로 저장하고 경로만 반환 (AI 컨텍스트 절약) |
 | `quota_status` | 오늘(KST) 키별 호출량 · 남은 한도 추정 |
 | `explain_error` | `resultCode` → 한글 설명 (code 생략 시 전체 표) |
+
+**원클릭** — 핵심 흐름을 한 번에
+
+| 도구 | 설명 |
+|---|---|
+| `use_api` | `idOrUrl` → 명세 읽기 → (저장된 키가 안 되면) 활용신청 → 키 저장(덮어쓰지 않음) → 명세 샘플값으로 시험 호출 → 엔드포인트 별칭 저장 → 바로 실행할 예시(`call_api` 인자, `curl`, JS; 키는 `DATAGO_SERVICE_KEY` 자리표시자만) 반환. **활용신청 제출은 포털 계정을 바꾸므로 `confirm:true` 일 때만** 하고, `dryRun:true` 는 아무것도 바꾸지 않고 할 일만 보여줍니다. 다시 실행하면 멈춘 곳부터 이어 가고, 진행률·취소를 지원합니다. CLI: `datagokr-apply-mcp use <id\|url>` |
 
 **키 · 별칭 관리**
 
@@ -172,6 +178,19 @@ Claude 가 따르는 흐름 (각 도구 설명에 "다음에 뭘 할지"가 들�
 > 자동신청은 **개인회원 + REST형 자동승인 API** 에서 동작합니다. LINK형(외부 바로가기)·기업회원 전용 API 는 "신청 폼을 열지 못했다"고 알려줍니다. 개인회원 자동승인 API 11건 신청·승인으로 검증했습니다.
 
 수동으로 발급받아도 됩니다: 포털 로그인 → API 상세에서 **활용신청** → 마이페이지 > 개발계정 > **일반 인증키** → `save_key`.
+
+### 원클릭: `use_api`
+
+```text
+use_api { idOrUrl: "15012690", dryRun: true }       # 할 일만 보기 (아무것도 안 바뀜)
+use_api { idOrUrl: "15012690" }                      # 키가 없으면 needs_confirm + 사용자에게 보여줄 plan
+use_api { idOrUrl: "15012690", confirm: true }       # 신청 제출 → 키 저장 → 시험 호출 → 별칭 저장
+use_api { idOrUrl: "15012690" }                      # 나중에 다시 실행: 이어서 진행, 재신청 안 함
+```
+
+`status` 가 다음 할 일을 알려줘요: `ready` · `needs_confirm` · `needs_login`(`apply_login`) · `pending_activation`(포털이 아직 키를 거부(20/30) — 승인 반영에 1~2시간, `retryAfter` 이후 재실행) · `need_params` · `needs_key` · `call_failed` · `apply_failed` · `unsupported` · `blocked_host` · `needs_setup`. 기존 키·별칭은 덮어쓰지 않아요(`datago-2`, `api-<id>-2`). 설정 파일의 진행 기록에는 데이터 id·시각·키 *이름*만 들어갑니다. 터미널: `node bin/server.js use 15012690 --dry-run` 후 `--confirm` (`--param k=v`, `--json`; 종료코드 0=완료, 2=사용자 조치 필요, 1=오류).
+
+> **실제 포털에서는 검증되지 않았습니다.** `use_api` 는 로컬 가짜 포털(CI 의 헤드리스 Chromium)과 목(mock)으로 끝까지 테스트했습니다. 실제 신청 폼·키 페이지·승인 시간은 확인하지 못했으니, 처음 실행에서 `showBrowser:true` 나 `save_key` 수동 저장이 필요할 수 있어요.
 
 ## 설정
 

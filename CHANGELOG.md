@@ -2,7 +2,19 @@
 
 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식, [SemVer](https://semver.org/lang/ko/) 를 따릅니다.
 
-## [Unreleased]
+## [2.3.0]
+
+핵심 흐름(검색 → 명세 → 신청 → 키 → 호출)을 한 번에 도는 `use_api` 도구와 CLI `use` 를 추가했습니다. 도구는 22개가 됩니다. **실제 포털은 미검증**(로컬 가짜 포털 + 헤드리스 Chromium, 목으로만 확인).
+
+### 추가
+- `use_api { idOrUrl, confirm, dryRun, ... }`: 명세 읽기 → (저장된 키가 거부되면) 활용신청 → 검증된 경로로 키 저장(덮어쓰지 않음) → 샘플 파라미터로 시험 호출 → 별칭 저장 → `call_api` 인자·curl·JS 예시(키는 `DATAGO_SERVICE_KEY` 자리표시자). 신청 제출은 정확히 `confirm:true` 일 때만, `dryRun` 은 아무것도 바꾸지 않음
+- 이어 하기: 설정 파일에 데이터 id·시각·키 이름만 기록해 다시 실행하면 재신청 없이 이어 감. 승인 반영 전(20/30)이면 `pending_activation` + `retryAfter`
+- 진행률 알림, 취소(제출 기록은 보존), 같은 id 동시 실행 방지, 결과에서 저장된 키 전부 가리기
+- CLI `datagokr-apply-mcp use <id|URL> [--dry-run] [--confirm] [--param k=v] [--json]` (종료코드 0 완료 / 2 사용자 조치 / 1 오류)
+- 가짜 포털에 명세 페이지·키 검사 API 추가, `test/use-e2e.test.js`(CI browser 잡에서 실행)
+
+### 변경
+- 인증키 수집 로직을 `src/keystore.js` 로 분리(apply_api·apply_get_key·use_api 공용, 동작 동일)
 
 ### CI
 - 신청 흐름 브라우저 테스트를 실제로 실행하는 Ubuntu `browser` 잡 추가(잠긴 `playwright-core` 에 맞는 Chromium 설치, 건너뛰면 실패). 상대는 로컬 가짜 포털이며 **실제 포털은 여전히 미검증**
