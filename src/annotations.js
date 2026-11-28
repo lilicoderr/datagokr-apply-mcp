@@ -18,6 +18,7 @@ export const TOOL_ANNOTATIONS = {
   apply_setup: R, doctor: R, apply_status: { ro: true, open: true },
   save_key: { ...W, dest: true }, remove_key: { ro: false, dest: true, idem: true, open: false },
   set_default_key: W, save_endpoint: { ...W, dest: true }, remove_endpoint: { ro: false, dest: true, idem: true, open: false },
+  use_api: { ro: false, dest: false, idem: true, open: true }, // 신청은 confirm:true 만, 키·별칭은 덮어쓰지 않음
   apply_login: { ro: false, dest: false, idem: true, open: true },
   apply_api: { ro: false, dest: false, idem: true, open: true }, // 이미 신청된 건은 건너뜀
   apply_get_key: { ro: false, dest: true, idem: true, open: true }, // 같은 이름 키를 갱신

@@ -35,7 +35,7 @@ const call = (s, name, args) => s.handle({ jsonrpc: '2.0', id: 1, method: 'tools
 
 test('outputSchema 가 tools/list 에 노출된다', async () => {
   const res = await setup().handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
-  for (const n of Object.keys(OUTPUT_SCHEMAS).filter((k) => !k.startsWith('apply_'))) {
+  for (const n of Object.keys(OUTPUT_SCHEMAS).filter((k) => !k.startsWith('apply_') && k !== 'use_api')) {
     assert.ok(res.result.tools.find((t) => t.name === n)?.outputSchema, n);
   }
 });

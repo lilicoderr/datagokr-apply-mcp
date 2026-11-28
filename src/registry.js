@@ -25,7 +25,7 @@ function maskEndpoint(e) {
   return { ...e, url: String(e?.url ?? '').replace(/(servicekey=)[^&#]*/gi, '$1***'), params };
 }
 
-const BLANK = { keys: {}, defaultKey: null, endpoints: {} };
+const BLANK = { keys: {}, defaultKey: null, endpoints: {}, flows: {} };
 
 export function createRegistry(file = defaultConfigPath()) {
   function load() {
@@ -41,6 +41,7 @@ export function createRegistry(file = defaultConfigPath()) {
         keys: obj.keys && typeof obj.keys === 'object' ? obj.keys : {},
         defaultKey: obj.defaultKey || null,
         endpoints: obj.endpoints && typeof obj.endpoints === 'object' ? obj.endpoints : {},
+        flows: obj.flows && typeof obj.flows === 'object' ? obj.flows : {},
       };
     } catch (e) {
       // 손상된 파일을 빈 상태로 덮어쓰면 저장된 키가 전부 사라진다 → 백업 후 진행
@@ -111,6 +112,15 @@ export function createRegistry(file = defaultConfigPath()) {
       s.defaultKey = name;
       save(s);
       return name;
+    },
+    // ── use_api 진행 기록 (데이터 id → 신청 시각·저장한 키 이름). 키 값은 넣지 않는다 ──
+    getFlow(id) { const f = load().flows; return Object.hasOwn(f, id) ? f[id] : null; },
+    saveFlow(id, patch) {
+      assertSafeName(id, '데이터 id');
+      const s = load();
+      s.flows[id] = { ...(Object.hasOwn(s.flows, id) ? s.flows[id] : {}), ...patch };
+      save(s);
+      return s.flows[id];
     },
     // ── 엔드포인트(별칭) ──
     listEndpoints() { return Object.fromEntries(Object.entries(load().endpoints).map(([a, e]) => [a, maskEndpoint(e)])); },

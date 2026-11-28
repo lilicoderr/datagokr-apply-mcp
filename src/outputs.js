@@ -42,6 +42,12 @@ export const OUTPUT_SCHEMAS = {
     key: { anyOf: [KEYINFO, { type: 'null' }] }, message: { type: 'string' },
   }, ['ok', 'message']),
   apply_get_key: KEYINFO,
+  use_api: obj({
+    ok: { type: 'boolean' }, status: { type: 'string' }, dataId: { type: ['string', 'null'] }, title: { type: ['string', 'null'] },
+    message: { type: 'string' }, hint: { type: 'string' }, next: { type: 'string' }, steps: { type: 'array' },
+    plan: { type: 'object' }, test: { type: 'object' }, alias: { type: ['string', 'null'] }, keyName: { type: 'string' },
+    example: { type: 'object' }, retryAfter: { type: 'string' }, retryInMinutes: { type: 'number' },
+  }, ['ok', 'status', 'message']),
 };
 
 export function attachOutputSchemas(server) {

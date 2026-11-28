@@ -19,6 +19,31 @@ export const SCENARIO = {
   buttonMissing: '9006', linkType: '9007', shortPurpose: '9008', notCompleted: '9009', preChecked: '9010',
   slow: '9011', confirmSaysDone: '9012', expireOnSubmit: '9013',
 };
+// use_api 용: 공개 명세 페이지가 있는 id (portal.js 는 5자리 이상 id 만 받는다)
+export const USE_PK = { normal: '90010', link: '90020', noSample: '90030' };
+export const API_PATH = '/openapi/fake/getThing';
+
+function specPage(pk, origin) {
+  const info = (k, v) => `<strong class="key">${k}</strong><div class="value">${v}</div>`;
+  const row = (name, need, sample) => `<tr><td>이름</td><td>${name}</td><td>4</td><td>${need}</td><td>${sample}</td><td>설명</td></tr>`;
+  if (pk === USE_PK.link) return `<title>가짜 LINK 데이터 | 포털</title>${info('API 유형', 'LINK')}`;
+  return `<title>가짜 조회서비스 | 포털</title>${info('API 유형', 'REST')}${info('활용승인 절차', '개발단계 : 자동승인 / 운영단계 : 자동승인')}
+    ${info('요청주소', `${origin}${API_PATH}`)}<table class="data">${row('solYear', '필', pk === USE_PK.noSample ? '-' : '2019')}${row('solMonth', '옵', '02')}</table>`;
+}
+
+// 신청 제출이 있고 activated 일 때(또는 preApproved)만 키를 받아준다. 아니면 게이트웨이처럼 resultCode 30.
+function apiResponse(state, url, res) {
+  const query = Object.fromEntries(url.searchParams);
+  state.apiRequests.push(query);
+  const approved = state.preApproved || (state.activated && state.submissions.length > 0);
+  if (!approved || query.serviceKey !== FAKE_DEC) {
+    res.writeHead(200, { 'content-type': 'text/xml; charset=utf-8' });
+    return res.end('<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>');
+  }
+  res.writeHead(200, { 'content-type': 'application/json' });
+  return res.end(JSON.stringify({ response: { header: { resultCode: state.apiCode }, body: { totalCount: 1, items: { item: [{ dateName: '가짜 항목' }] } } } }));
+}
+
 const nameOf = (pk) => Object.keys(SCENARIO).find((k) => SCENARIO[k] === pk);
 
 function formPage(pk) {
@@ -49,7 +74,7 @@ export const KEY_PAGE = {
  *   expired: null | 'redirect'(302 → 로그인) | 'alert'(200 + 알림창 → 첫 화면)
  */
 export async function startFakePortal() {
-  const state = { expired: null, keyPage: 'inputs', listKeyPage: 'none', submissions: [] };
+  const state = { expired: null, keyPage: 'inputs', listKeyPage: 'none', submissions: [], apiRequests: [], preApproved: false, activated: true, apiCode: '00' };
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const send = (body, status = 200) => { res.writeHead(status, { 'content-type': 'text/html; charset=utf-8' }); res.end(body); };
@@ -57,6 +82,9 @@ export async function startFakePortal() {
     const p = url.pathname;
     const pk = url.searchParams.get('publicDataPk');
     if (p === '/') return send(html('FAKE main'));
+    const specId = p.match(/^\/data\/(\d+)\/openapi\.do$/)?.[1];
+    if (Object.values(USE_PK).includes(specId)) return send(specPage(specId, `http://${req.headers.host}`));
+    if (p === API_PATH) return apiResponse(state, url, res);
     if (p === LOGIN) return send(html('<h1>FAKE 로그인 화면</h1>'));
     const authed = String(req.headers.cookie || '').includes(`${FAKE_COOKIE}=ok`);
     if (!authed || state.expired === 'redirect') return redirect(LOGIN);

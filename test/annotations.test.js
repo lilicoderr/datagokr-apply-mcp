@@ -43,7 +43,7 @@ test('읽기 전용 도구에는 destructive/idempotent 가 없고, 쓰기 도�
 test('표에 오타가 없다: 등록된 도구 이름만 (미구현 예정 도구 제외)', () => {
   const names = new Set(full().tools.keys());
   // apply_* 는 playwright-core 가 있을 때만 등록된다 (CI 에는 없을 수 있음)
-  const planned = new Set(['apply_login', 'apply_status', 'apply_api', 'apply_get_key', 'my_applications']);
+  const planned = new Set(['apply_login', 'apply_status', 'apply_api', 'apply_get_key', 'my_applications', 'use_api']);
   for (const k of Object.keys(TOOL_ANNOTATIONS)) {
     assert.ok(names.has(k) || planned.has(k) || k === 'apply_setup', `표의 ${k} 는 등록되지 않음`);
   }

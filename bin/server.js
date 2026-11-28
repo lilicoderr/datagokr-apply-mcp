@@ -13,6 +13,7 @@ import { loggerFromEnv } from '../src/logger.js';
 import { registerResources } from '../src/resources.js';
 import { registerApplyTools } from '../src/tools-apply.js';
 import * as apply from '../src/apply.js';
+import { registerUseTool } from '../src/tools-use.js';
 import { runDoctor, formatReport, exitCode, applyFixes, formatFixes } from '../src/doctor.js';
 import { annotateTools } from '../src/annotations.js';
 import { readFileSync } from 'node:fs';
@@ -86,6 +87,7 @@ const logger = loggerFromEnv(process.env, {
 registerTools(server, { registry, usage, logger, cache: createCache() });
 registerResources(server, { registry, usage });
 registerApplyTools(server, { registry }); // 활용신청 자동화(playwright-core 있을 때만)
+registerUseTool(server, { registry, usage, logger }); // 원클릭 use_api
 server.tool('doctor', {
   description: '설치·키·네트워크·브라우저·로그인 세션을 점검해 "왜 안 되는지"와 고치는 방법을 알려준다. '
     + '호출이 실패하거나 apply_* 가 안 보일 때 먼저 실행하라.',
